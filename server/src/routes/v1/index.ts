@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { sendSuccessResponse } from "../../utils/apiResponse.js";
+import systemRouter from "../../modules/system/system.routes.js";
 
 const router = Router();
 
@@ -13,5 +14,7 @@ router.get("/", (_req, res) => {
     },
   });
 });
+
+router.use("/system", systemRouter);
 
 export default router;

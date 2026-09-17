@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { logger } from "../utils/logger.js";
 
 export const requestTimeMiddleware = (
   req: Request,
@@ -10,7 +11,7 @@ export const requestTimeMiddleware = (
   res.on("finish", () => {
     const duration = Date.now() - startTime;
 
-    console.log(
+    logger.info(
       `${req.method} ${req.originalUrl} - ${res.statusCode} - ${duration}ms`,
     );
   });

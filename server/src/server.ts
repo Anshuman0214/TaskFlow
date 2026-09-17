@@ -1,19 +1,23 @@
 import app from "./app.js";
 import { env } from "./config/env.js";
 import { connectMongoDB } from "./database/mongodb.js";
+import { connectRedis, redisClient } from "./database/redis.js";
+import { logger } from "./utils/logger.js";
 
 const startServer = async (): Promise<void> => {
   await connectMongoDB();
+  await connectRedis();
 
   const server = app.listen(env.PORT, () => {
-    console.log(`TaskFlow API running on port ${env.PORT}`);
+    logger.info(`TaskFlow API running on port ${env.PORT}`);
   });
 
   const shutdown = (): void => {
-    console.log("Shutting down server...");
+    logger.info("Shutting down server...");
 
     server.close(() => {
-      console.log("HTTP server closed");
+      redisClient.disconnect();
+      logger.info("HTTP server closed");
       process.exit(0);
     });
   };

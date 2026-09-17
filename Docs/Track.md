@@ -2,12 +2,12 @@ track.md
 TaskFlow Development Tracker
 Project Status: 🟡 In Development
 Current Version: v1.0.0
-Started: (Update when development begins)
+Started: 2026-09-18
 ________________________________________
 Overall Progress
 Milestone	Status	Progress
-M0 - Project Foundation	⬜	0%
-M1 - Authentication	⬜	0%
+M0 - Project Foundation	🟡	85%
+M1 - Authentication	🟡	15%
 M2 - Organizations	⬜	0%
 M3 - Workspaces	⬜	0%
 M4 - Projects	⬜	0%
@@ -28,29 +28,30 @@ ________________________________________
 Milestone Tracker
 M0 — Project Foundation
 Tasks
-•	Initialize repository
-•	Setup backend
-•	Setup frontend
-•	Configure TypeScript
-•	Configure ESLint
-•	Configure Biome/Prettier
-•	Configure Docker
-•	Configure Docker Compose
-•	Configure MongoDB
-•	Configure Redis
-•	Configure Swagger
-•	Configure Logging
-•	Configure Error Handling
-•	Create Folder Structure
-•	Health Check Endpoint
+•	✅ Initialize repository
+•	✅ Setup backend
+•	⬜ Setup frontend (not started)
+•	✅ Configure TypeScript
+•	⛔ Configure ESLint (config exists but typescript-eslint@8.66.0 does not support typescript@7.0.2 — `pnpm lint` currently fails; pre-existing, not caused by M0 work; see Technical Debt)
+•	⬜ Configure Biome/Prettier (not started)
+•	✅ Configure Docker (Dockerfile + docker-compose.yml added; not build-tested — no Docker daemon in dev sandbox)
+•	✅ Configure Docker Compose (app + mongo + redis services with healthchecks)
+•	✅ Configure MongoDB (connected and verified against live Atlas cluster)
+•	✅ Configure Redis (ioredis wired with fail-fast connect; verified it attempts connection and fails correctly when no Redis is reachable)
+•	✅ Configure Swagger (minimal OpenAPI doc served at /api/docs, covers currently-live endpoints only)
+•	✅ Configure Logging (Winston logger; replaced console.log/error across server.ts, mongodb.ts, redis.ts, error/requestTime middleware)
+•	✅ Configure Error Handling (AppError + centralized error middleware; dead duplicate errors/AppErrors.ts removed)
+•	✅ Create Folder Structure
+•	✅ Health Check Endpoint (GET /api/v1/system/health + /system/info, module-layered per Rules.md, covered by tests)
+Security hardening added alongside M0 (helmet, cors restricted to CORS_ORIGIN, cookie-parser, express-rate-limit on /api, 10kb JSON body limit, trust proxy)
 Exit Criteria
-•	Backend starts successfully
-•	Frontend starts successfully
-•	Docker environment operational
-•	Health endpoint working
+•	✅ Backend starts successfully (verified: MongoDB connects on boot)
+•	⬜ Frontend starts successfully (out of scope — no frontend exists yet)
+•	🟡 Docker environment operational (config written and reviewed; unverified — no Docker available in this environment)
+•	✅ Health endpoint working (verified via automated tests and a live dev-server run)
 ________________________________________
 M1 — Authentication
-•	Register
+•	🟡 Register (validation, service, controller written; auth.routes.ts is still empty so the endpoint is not yet wired/reachable — not part of this M0 pass)
 •	Email Verification
 •	Login
 •	Logout
@@ -152,8 +153,8 @@ Blockers
 ________________________________________
 Technical Debt
 Priority	Item	Status
-High	None	Open
-Medium	None	Open
+High	typescript-eslint@8.66.0 does not support typescript@7.0.2 — `pnpm lint` fails to even load the config. Fix by pinning typescript to a 6.x line typescript-eslint supports, or waiting for typescript-eslint to add TS 7 support.	Open
+Medium	Empty placeholder folders under server/src (controllers/, respositories/, services/, types/, validators/, constants/) left over from before the modules/ pattern was adopted — safe to delete.	Open
 Low	None	Open
 ________________________________________
 Known Bugs

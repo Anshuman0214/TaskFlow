@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { AppError } from "../utils/AppError.js";
+import { logger } from "../utils/logger.js";
 
 export const errorMiddleware = (
   error: Error,
@@ -7,7 +8,7 @@ export const errorMiddleware = (
   res: Response,
   _next: NextFunction,
 ): void => {
-  console.error(error);
+  logger.error(error.message, { stack: error.stack });
 
   if (error instanceof AppError) {
     res.status(error.statusCode).json({
