@@ -30,6 +30,35 @@ const userSchema = new Schema<IUser>(
       type: Boolean,
       default: true,
     },
+
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    emailVerificationTokenHash: {
+      type: String,
+      default: null,
+      select: false,
+    },
+
+    emailVerificationExpiresAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+
+    passwordResetTokenHash: {
+      type: String,
+      default: null,
+      select: false,
+    },
+
+    passwordResetExpiresAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
   },
   {
     timestamps: true,

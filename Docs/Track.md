@@ -7,7 +7,7 @@ ________________________________________
 Overall Progress
 Milestone	Status	Progress
 M0 - Project Foundation	🟡	85%
-M1 - Authentication	🟡	15%
+M1 - Authentication	✅	100%
 M2 - Organizations	⬜	0%
 M3 - Workspaces	⬜	0%
 M4 - Projects	⬜	0%
@@ -51,18 +51,22 @@ Exit Criteria
 •	✅ Health endpoint working (verified via automated tests and a live dev-server run)
 ________________________________________
 M1 — Authentication
-•	🟡 Register (validation, service, controller written; auth.routes.ts is still empty so the endpoint is not yet wired/reachable — not part of this M0 pass)
-•	Email Verification
-•	Login
-•	Logout
-•	Logout All
-•	Refresh Token
-•	Forgot Password
-•	Reset Password
-•	Session Management
-•	JWT Authentication
-•	HTTP-only Cookies
-•	Redis Sessions
+•	✅ Register (email/password + strong-password policy; account starts unverified)
+•	✅ Email Verification (hashed single-use token stored on the user doc, 24h expiry; email delivery stubbed to the logger — no SMTP provider configured yet, see Technical Debt)
+•	✅ Login (rejects unverified/disabled accounts; generic "invalid credentials" message)
+•	✅ Logout (revokes the current session only)
+•	✅ Logout All (revokes every session for the user)
+•	✅ Refresh Token (rotated on every use; old refresh token invalidated)
+•	✅ Forgot Password (anti-enumeration: always returns the same success message; 30 min token expiry)
+•	✅ Reset Password (revokes all active sessions on success)
+•	✅ Session Management (Mongo `Session` collection for persistent/audit record, keyed by TTL index)
+•	✅ JWT Authentication (short-lived access token in response body, `requireAuth` middleware)
+•	✅ HTTP-only Cookies (refresh token only, `secure` in production, scoped to `/api/v1/auth`)
+•	✅ Redis Sessions (Redis is the fast/authoritative store for whether a session's refresh token is still valid; Mongo holds the durable device/audit record)
+•	✅ Bonus: `GET /api/v1/auth/me` (not in the original M1 list, but trivial once `requireAuth` exists and needed to prove the JWT flow end-to-end)
+Exit Criteria
+•	✅ All endpoints above implemented, wired, validated (Zod), rate-limited per `Docs/ApiSpecifications.md`, and covered by integration tests (17 tests in `tests/auth.test.ts`, run against the real dev MongoDB Atlas cluster + a local Redis via `docker compose up -d redis`)
+•	✅ `pnpm typecheck`, `pnpm build`, `pnpm test` all pass
 ________________________________________
 M2 — Organizations
 •	Organization CRUD
@@ -143,11 +147,26 @@ M12 — Release
 ________________________________________
 Current Sprint
 Sprint Goal
-To be updated.
-Planned Tasks
-•	[ ]
+M2 — Organizations (multi-tenancy foundation).
+Planned Tasks (in dependency order)
+•	[ ] `Organization` model + repository (name, slug (unique, URL-safe), description/logo/settings placeholders, Base Entity fields incl. soft delete)
+•	[ ] `OrganizationMember` model + repository (userId + organizationId + role, compound unique index on organizationId+userId, per Docs/DatabaseDesign.md §3 "OrganizationMembers")
+•	[ ] Role enum: OWNER, ADMIN, MANAGER, MEMBER, GUEST (Docs/ApiSpecifications.md "Organization Roles")
+•	[ ] `requireOrganizationRole(...)` middleware — resolves the caller's membership + role for `:organizationId` in the route and rejects non-members/insufficient roles. Every M2+ endpoint depends on this; build it once, not per-route.
+•	[ ] POST /api/v1/organizations (create org, creator becomes OWNER via OrganizationMember, txn since it's two writes)
+•	[ ] GET /api/v1/organizations (list current user's orgs, via their OrganizationMember rows)
+•	[ ] GET /api/v1/organizations/:organizationId (member-only)
+•	[ ] PATCH /api/v1/organizations/:organizationId (OWNER/ADMIN only; name/logo/description)
+•	[ ] DELETE /api/v1/organizations/:organizationId (OWNER only; soft delete + cascade per Docs/DatabaseDesign.md "Cascade Rules" — revoke members' sessions, soft-delete future child resources once they exist)
+•	[ ] Organization Member endpoints: list / invite / update role / remove (`/organizations/:organizationId/members`), incl. "exactly one Owner" and "can't remove/demote self" business rules
+•	[ ] Invitation model + repository + email-invite flow (reuses the mailer stub pattern from M1)
+•	[ ] Introduce the `AuditLog` collection now (it's organizationId-scoped per the DB design, so M1 had nothing to attach it to) — write on ORGANIZATION_CREATED/UPDATED/DELETED, MEMBER_INVITED/ROLE_UPDATED/REMOVED
+Key Decisions Carried From M1
+•	Repository layer is mandatory (server/src/modules/*/*.repository.ts) — controllers/services never touch Mongoose models directly, per Docs/Rules.md §5.
+•	Tenant isolation rule from here on: every M2+ query must filter by organizationId; there is no cross-org access, ever.
+•	`requireAuth` (M1) gives `req.userId`; M2 adds `requireOrganizationRole` on top of it — auth and tenant authorization stay separate middlewares, composed per route.
 Completed
-•	[ ]
+•	[x] M1 — Authentication (see above)
 Blockers
 •	None
 ________________________________________
@@ -155,7 +174,9 @@ Technical Debt
 Priority	Item	Status
 High	typescript-eslint@8.66.0 does not support typescript@7.0.2 — `pnpm lint` fails to even load the config. Fix by pinning typescript to a 6.x line typescript-eslint supports, or waiting for typescript-eslint to add TS 7 support.	Open
 Medium	Empty placeholder folders under server/src (controllers/, respositories/, services/, types/, validators/, constants/) left over from before the modules/ pattern was adopted — safe to delete.	Open
-Low	None	Open
+Medium	No real email provider configured. `modules/auth/mailer.ts` logs verification/reset links instead of sending them. Swap in nodemailer/SES/Resend once SMTP credentials exist — call sites (`sendVerificationEmail`/`sendPasswordResetEmail`) don't need to change.	Open
+Low	Refresh-token rate limit (60/user/hour per spec) is currently keyed by IP, not by user, since the user isn't known until the refresh token is decoded inside the handler. Add a keyed limiter if this needs to be per-user.	Open
+Low	`revokeAllSessionsForUser` uses Redis `KEYS` to find a user's session keys — O(n) over the whole keyspace. Fine at current scale; switch to `SCAN` or a per-user Redis SET of session ids if the keyspace grows large.	Open
 ________________________________________
 Known Bugs
 Severity	Description	Status
