@@ -6,7 +6,7 @@ Started: 2026-09-18
 ________________________________________
 Overall Progress
 Milestone	Status	Progress
-M0 - Project Foundation	🟡	85%
+M0 - Project Foundation	🟡	95%
 M1 - Authentication	✅	100%
 M2 - Organizations	⬜	0%
 M3 - Workspaces	⬜	0%
@@ -30,11 +30,11 @@ M0 — Project Foundation
 Tasks
 •	✅ Initialize repository
 •	✅ Setup backend
-•	⬜ Setup frontend (not started)
+•	✅ Setup frontend (`client/`: Vite + React 19 + TypeScript, Tailwind CSS v4, React Router, TanStack Query, Axios, React Hook Form + Zod, ESLint — per `Docs/TechReq.md` §3. Scope is foundation only: API client with an auth-token refresh interceptor, and a status page proving live connectivity. Login/register UI is explicitly M9 scope, not built here.)
 •	✅ Configure TypeScript
-•	⛔ Configure ESLint (config exists but typescript-eslint@8.66.0 does not support typescript@7.0.2 — `pnpm lint` currently fails; pre-existing, not caused by M0 work; see Technical Debt)
+•	⛔ Configure ESLint (backend: config exists but typescript-eslint@8.66.0 does not support typescript@7.0.2 — `pnpm lint` currently fails; pre-existing, not caused by M0 work; see Technical Debt. Frontend `client/` ESLint is configured and passing.)
 •	⬜ Configure Biome/Prettier (not started)
-•	✅ Configure Docker (Dockerfile + docker-compose.yml added; not build-tested — no Docker daemon in dev sandbox)
+•	✅ Configure Docker (Dockerfile + docker-compose.yml added; verified 2026-09-18 — Docker Desktop started and `docker compose up -d redis` runs a healthy container)
 •	✅ Configure Docker Compose (app + mongo + redis services with healthchecks)
 •	✅ Configure MongoDB (connected and verified against live Atlas cluster)
 •	✅ Configure Redis (ioredis wired with fail-fast connect; verified it attempts connection and fails correctly when no Redis is reachable)
@@ -46,9 +46,9 @@ Tasks
 Security hardening added alongside M0 (helmet, cors restricted to CORS_ORIGIN, cookie-parser, express-rate-limit on /api, 10kb JSON body limit, trust proxy)
 Exit Criteria
 •	✅ Backend starts successfully (verified: MongoDB connects on boot)
-•	⬜ Frontend starts successfully (out of scope — no frontend exists yet)
-•	🟡 Docker environment operational (config written and reviewed; unverified — no Docker available in this environment)
-•	✅ Health endpoint working (verified via automated tests and a live dev-server run)
+•	✅ Frontend starts successfully (verified 2026-09-18: `pnpm dev` in `client/` serves on :5173, `pnpm build`/`pnpm lint`/`tsc -b` all pass, and the status page was opened in a real browser showing live "connected" badges for API/Database/Redis)
+•	✅ Docker environment operational (verified 2026-09-18: Docker Desktop launched and `docker compose up -d redis` produced a healthy container backing the backend's Redis session store)
+•	✅ Health endpoint working (verified via automated tests, a live dev-server run, and now consumed cross-origin by the frontend with credentials)
 ________________________________________
 M1 — Authentication
 •	✅ Register (email/password + strong-password policy; account starts unverified)

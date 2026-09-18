@@ -2,7 +2,7 @@
 
 TaskFlow is a **multi-tenant task management platform** — think of it as a tool like Jira or Trello, where different companies (tenants) can each create an account, invite their team, and organize their work into projects and tasks.
 
-> **Status: 🟡 In active development.** The backend foundation is being built first. There is no working app yet — see [Project Progress](#project-progress) below for exactly what's done.
+> **Status: 🟡 In active development.** Backend authentication is complete and a minimal frontend foundation now talks to it. There is no full app yet — see [Project Progress](#project-progress) below for exactly what's done.
 
 ---
 
@@ -44,7 +44,8 @@ Companies' data is always kept separate — one organization can never see or ac
 | Validation | Zod | Checks that incoming data is well-formed |
 | Security | Helmet, CORS, bcrypt, JWT | Protects the API and user passwords |
 | Testing | Vitest + Supertest | Automated tests for the backend |
-| Frontend *(not started yet)* | React + TypeScript + Tailwind CSS | The website users will interact with |
+| Frontend | React + TypeScript + Vite + Tailwind CSS | The website users will interact with |
+| Frontend data/routing | TanStack Query, React Router, Axios | Talking to the API, caching, navigation |
 
 **API style:** TaskFlow exposes a REST API (a standard way for a frontend, mobile app, or other service to talk to the backend over the internet using simple web requests).
 
@@ -56,9 +57,9 @@ Development follows a milestone plan — each milestone must be working and test
 
 | Milestone | What it covers | Status |
 |---|---|---|
-| **M0 – Project Foundation** | Server setup, database connections, security, logging, Docker | 🟡 ~85% |
-| **M1 – Authentication** | Register, login, logout, email verification, password reset | 🟡 ~15% |
-| M2 – Organizations | Create/manage companies and members | ⬜ Not started |
+| **M0 – Project Foundation** | Server setup, database connections, security, logging, Docker, frontend scaffold | 🟡 ~95% |
+| **M1 – Authentication** | Register, login, logout, email verification, password reset | ✅ 100% |
+| M2 – Organizations | Create/manage companies and members | ⬜ Not started (planned — see `Docs/Track.md`) |
 | M3 – Workspaces | Departments within an organization | ⬜ Not started |
 | M4 – Projects | Create and manage projects | ⬜ Not started |
 | M5 – Tasks | Create, assign, and track tasks | ⬜ Not started |
@@ -74,11 +75,13 @@ Development follows a milestone plan — each milestone must be working and test
 - The backend server starts up and connects to the database.
 - A health-check endpoint reports whether the database and cache are online.
 - Security protections (rate limiting, safe headers, restricted cross-origin access) are in place.
+- Full authentication: register, verify email, login, logout (single device or all devices), refresh-token rotation, forgot/reset password. JWT access tokens + HTTP-only refresh cookie, sessions backed by Redis + MongoDB.
 - Automated tests run and pass for everything built so far.
+- A minimal frontend (`client/`) boots, calls the backend's health endpoint across origins with credentials, and renders live connection status in the browser.
 
 **What's not working yet:**
-- There is no way to actually create an account or log in through the API yet — this is the current focus (Milestone 1).
-- There is no website/frontend yet — only the backend server exists so far.
+- There's no UI to actually register/log in from the browser yet — the API supports it, but the login/register screens are Milestone 9 (Frontend) work, not built yet.
+- Organizations, workspaces, projects, and tasks (Milestones 2–8) haven't been built.
 
 ---
 
@@ -88,7 +91,7 @@ Development follows a milestone plan — each milestone must be working and test
 TaskFlow/
 ├── Docs/     → All planning documents: requirements, API design, database design, rules
 ├── server/   → The backend (Node.js + Express + TypeScript API)
-└── client/   → The frontend (not started yet)
+└── client/   → The frontend (Vite + React + TypeScript)
 ```
 
 ---
@@ -98,10 +101,17 @@ TaskFlow/
 1. Install [Node.js](https://nodejs.org) and [pnpm](https://pnpm.io).
 2. Go into the server folder: `cd server`
 3. Install dependencies: `pnpm install`
-4. Copy `.env.examples` to `.env` and fill in your own MongoDB and Redis connection details.
+4. Copy `.env.examples` to `.env` and fill in your own MongoDB, Redis, and JWT secret values.
 5. Start the server: `pnpm dev`
 
-A Docker setup (`server/docker-compose.yml`) is also provided to run the database and cache without installing them yourself.
+A Docker setup (`server/docker-compose.yml`) is also provided to run the database and cache without installing them yourself — `docker compose up -d redis` is enough if you already have a MongoDB Atlas connection string.
+
+## Running the Frontend Locally
+
+1. Go into the client folder: `cd client`
+2. Install dependencies: `pnpm install`
+3. Copy `.env.example` to `.env` (defaults to `http://localhost:5000/api/v1`, matching the backend above).
+4. Start the dev server: `pnpm dev`, then open `http://localhost:5173`.
 
 ---
 
