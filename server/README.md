@@ -39,8 +39,8 @@ src/
 ├── database/     → MongoDB and Redis connections
 ├── docs/         → OpenAPI document
 ├── middleware/   → cross-cutting Express middleware (errors, validation, request logging)
-├── modules/      → one folder per domain (auth, users, system, …), each with its own
-│                   routes → controller → service → repository → model
+├── modules/      → one folder per domain (auth, users, organizations, audit, system, …), each
+│                   with its own routes → controller → service → repository → model
 ├── routes/       → route mounting (versioned under /api/v1)
 └── utils/        → shared helpers (AppError, logger, response shape)
 ```
@@ -49,4 +49,4 @@ Layering follows `../Docs/Rules.md`: routes never contain logic, controllers nev
 
 ## Current status
 
-See `../Docs/Track.md` for the live milestone tracker. As of now: M0 (Project Foundation) and M1 (Authentication) are complete; M2 (Organizations) is planned but not started.
+See `../Docs/Track.md` for the live milestone tracker. As of now: M0 (Project Foundation), M1 (Authentication), and M2 (Organizations) are complete; M3 (Workspaces) is up next.

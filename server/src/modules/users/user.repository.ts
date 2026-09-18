@@ -31,4 +31,4 @@ export const findUserByPasswordResetTokenHash = (tokenHash: string) =>
 export const createUser = (input: CreateUserInput) => User.create(input);
 
 export const updateUserFields = (id: string, fields: Partial<IUser>) =>
-  User.findByIdAndUpdate(id, fields, { new: true });
+  User.findByIdAndUpdate(id, fields, { returnDocument: "after" });

@@ -8,7 +8,7 @@ Overall Progress
 Milestone	Status	Progress
 M0 - Project Foundation	🟡	95%
 M1 - Authentication	✅	100%
-M2 - Organizations	⬜	0%
+M2 - Organizations	✅	100%
 M3 - Workspaces	⬜	0%
 M4 - Projects	⬜	0%
 M5 - Tasks	⬜	0%
@@ -69,10 +69,15 @@ Exit Criteria
 •	✅ `pnpm typecheck`, `pnpm build`, `pnpm test` all pass
 ________________________________________
 M2 — Organizations
-•	Organization CRUD
-•	Membership Management
-•	Invitations
-•	Role Management
+•	✅ Organization CRUD (create/list/get/update/soft-delete; auto-unique URL-safe slug; `requireOrganizationRole` middleware gates every org-scoped route)
+•	✅ Membership Management (list/invite/update-role/remove under `/organizations/:organizationId/members`; owner protections: Owner's role can never be changed or removed, callers can't remove themselves)
+•	✅ Invitations (hashed single-use token on a separate `Invitation` collection, 7-day expiry, `POST /organizations/invitations/accept`; email delivery reuses the M1 mailer-stub pattern)
+•	✅ Role Management (OWNER/ADMIN/MANAGER/MEMBER/GUEST enum; OWNER only ever granted at org creation, never assignable through the member endpoints)
+•	✅ `AuditLog` collection introduced (append-only, no update/delete anywhere in the codebase); written on ORGANIZATION_CREATED/UPDATED/DELETED, MEMBER_INVITED/ROLE_UPDATED/REMOVED
+Exit Criteria
+•	✅ All endpoints implemented, validated (Zod), authorized (`requireAuth` + `requireOrganizationRole`), and covered by integration tests (9 tests in `tests/organizations.test.ts`, run against the real dev MongoDB Atlas cluster)
+•	✅ `pnpm typecheck`, `pnpm build`, `pnpm test` all pass (26 tests total)
+•	✅ Manually verified end-to-end against a live dev server: create → invite → accept → list members → role update → owner-protection rejections → remove → soft-delete
 ________________________________________
 M3 — Workspaces
 •	Workspace CRUD
@@ -147,26 +152,15 @@ M12 — Release
 ________________________________________
 Current Sprint
 Sprint Goal
-M2 — Organizations (multi-tenancy foundation).
-Planned Tasks (in dependency order)
-•	[ ] `Organization` model + repository (name, slug (unique, URL-safe), description/logo/settings placeholders, Base Entity fields incl. soft delete)
-•	[ ] `OrganizationMember` model + repository (userId + organizationId + role, compound unique index on organizationId+userId, per Docs/DatabaseDesign.md §3 "OrganizationMembers")
-•	[ ] Role enum: OWNER, ADMIN, MANAGER, MEMBER, GUEST (Docs/ApiSpecifications.md "Organization Roles")
-•	[ ] `requireOrganizationRole(...)` middleware — resolves the caller's membership + role for `:organizationId` in the route and rejects non-members/insufficient roles. Every M2+ endpoint depends on this; build it once, not per-route.
-•	[ ] POST /api/v1/organizations (create org, creator becomes OWNER via OrganizationMember, txn since it's two writes)
-•	[ ] GET /api/v1/organizations (list current user's orgs, via their OrganizationMember rows)
-•	[ ] GET /api/v1/organizations/:organizationId (member-only)
-•	[ ] PATCH /api/v1/organizations/:organizationId (OWNER/ADMIN only; name/logo/description)
-•	[ ] DELETE /api/v1/organizations/:organizationId (OWNER only; soft delete + cascade per Docs/DatabaseDesign.md "Cascade Rules" — revoke members' sessions, soft-delete future child resources once they exist)
-•	[ ] Organization Member endpoints: list / invite / update role / remove (`/organizations/:organizationId/members`), incl. "exactly one Owner" and "can't remove/demote self" business rules
-•	[ ] Invitation model + repository + email-invite flow (reuses the mailer stub pattern from M1)
-•	[ ] Introduce the `AuditLog` collection now (it's organizationId-scoped per the DB design, so M1 had nothing to attach it to) — write on ORGANIZATION_CREATED/UPDATED/DELETED, MEMBER_INVITED/ROLE_UPDATED/REMOVED
-Key Decisions Carried From M1
+M3 — Workspaces. Not yet planned in detail (M2 finished this session; ask to plan M3 when ready to start it).
+Key Decisions Carried From M2 (apply to M3 and onward)
 •	Repository layer is mandatory (server/src/modules/*/*.repository.ts) — controllers/services never touch Mongoose models directly, per Docs/Rules.md §5.
-•	Tenant isolation rule from here on: every M2+ query must filter by organizationId; there is no cross-org access, ever.
-•	`requireAuth` (M1) gives `req.userId`; M2 adds `requireOrganizationRole` on top of it — auth and tenant authorization stay separate middlewares, composed per route.
+•	Tenant isolation rule: every M2+ query must filter by organizationId; there is no cross-org access, ever.
+•	`requireAuth` (M1) gives `req.userId`; `requireOrganizationRole` (M2) is composed on top of it per route. A future `requireWorkspaceRole`-style check for M3 should follow the same "compose, don't inline" pattern rather than re-checking membership ad hoc in controllers.
+•	No multi-document Mongo transactions: this Atlas tier doesn't support retryable-write transactions (confirmed in M2 — `createOrganization` originally used `session.withTransaction` and failed at runtime). Multi-write operations use sequential writes with manual compensation (see `organization.service.ts`'s `createOrganization` for the pattern) instead.
 Completed
 •	[x] M1 — Authentication (see above)
+•	[x] M2 — Organizations (see above)
 Blockers
 •	None
 ________________________________________
@@ -174,9 +168,12 @@ Technical Debt
 Priority	Item	Status
 High	typescript-eslint@8.66.0 does not support typescript@7.0.2 — `pnpm lint` fails to even load the config. Fix by pinning typescript to a 6.x line typescript-eslint supports, or waiting for typescript-eslint to add TS 7 support.	Open
 Medium	Empty placeholder folders under server/src (controllers/, respositories/, services/, types/, validators/, constants/) left over from before the modules/ pattern was adopted — safe to delete.	Open
-Medium	No real email provider configured. `modules/auth/mailer.ts` logs verification/reset links instead of sending them. Swap in nodemailer/SES/Resend once SMTP credentials exist — call sites (`sendVerificationEmail`/`sendPasswordResetEmail`) don't need to change.	Open
+Medium	No real email provider configured. `utils/mailer.ts` (moved here in M2, was `modules/auth/mailer.ts`) logs verification/reset/invite links instead of sending them. Swap in nodemailer/SES/Resend once SMTP credentials exist — call sites don't need to change.	Open
 Low	Refresh-token rate limit (60/user/hour per spec) is currently keyed by IP, not by user, since the user isn't known until the refresh token is decoded inside the handler. Add a keyed limiter if this needs to be per-user.	Open
 Low	`revokeAllSessionsForUser` uses Redis `KEYS` to find a user's session keys — O(n) over the whole keyspace. Fine at current scale; switch to `SCAN` or a per-user Redis SET of session ids if the keyspace grows large.	Open
+Low	No decline-invitation or list-pending-invitations endpoints — not in `Docs/ApiSpecifications.md`'s documented endpoint list, so not built (YAGNI). A pending invite simply sits until it expires (7 days) or is superseded by a fresh invite to the same email.	Open
+Low	Deleting an organization doesn't touch its `OrganizationMember` rows (matches `Docs/DatabaseDesign.md`'s cascade rules exactly — membership isn't listed there). They become orphaned but harmless since `requireOrganizationRole` looks up the organization first and 404s on a deleted one.	Open
+Low	`Docs/DatabaseDesign.md`'s org-deletion cascade also says to "revoke active sessions for members of that organization" — deliberately not implemented. M1 sessions are global per user (JWT payload is just `{userId, sessionId}`, not org-scoped), so revoking them on one org's deletion would log a user out of every other org they belong to. Revisit if sessions ever become org-scoped.	Open
 ________________________________________
 Known Bugs
 Severity	Description	Status

@@ -24,7 +24,7 @@ import {
   EMAIL_VERIFICATION_TTL_MS,
   PASSWORD_RESET_TTL_MS,
 } from "./auth.config.js";
-import { sendPasswordResetEmail, sendVerificationEmail } from "./mailer.js";
+import { sendPasswordResetEmail, sendVerificationEmail } from "../../utils/mailer.js";
 import {
   createSession,
   isSessionRefreshTokenValid,

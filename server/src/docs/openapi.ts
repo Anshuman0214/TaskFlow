@@ -89,6 +89,75 @@ export const openApiDocument = {
         responses: { "200": { description: "Current user" } },
       },
     },
+    "/organizations": {
+      post: {
+        summary: "Create an organization",
+        description: "The creator becomes the OWNER.",
+        security: [{ bearerAuth: [] }],
+        responses: { "201": { description: "Organization created" } },
+      },
+      get: {
+        summary: "List the current user's organizations",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Organizations with the caller's role in each" } },
+      },
+    },
+    "/organizations/invitations/accept": {
+      post: {
+        summary: "Accept a pending organization invitation",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Invitation accepted" } },
+      },
+    },
+    "/organizations/{organizationId}": {
+      get: {
+        summary: "Get an organization",
+        description: "Requires membership.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Organization" }, "404": { description: "Not found" } },
+      },
+      patch: {
+        summary: "Update an organization",
+        description: "OWNER or ADMIN only.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Organization updated" } },
+      },
+      delete: {
+        summary: "Delete an organization",
+        description: "OWNER only. Soft delete.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Organization deleted" } },
+      },
+    },
+    "/organizations/{organizationId}/members": {
+      get: {
+        summary: "List organization members",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Members" } },
+      },
+      post: {
+        summary: "Invite a member",
+        description: "OWNER or ADMIN only. OWNER role cannot be assigned this way.",
+        security: [{ bearerAuth: [] }],
+        responses: { "201": { description: "Invitation sent" } },
+      },
+    },
+    "/organizations/{organizationId}/members/{memberId}/role": {
+      patch: {
+        summary: "Update a member's role",
+        description: "OWNER or ADMIN only. The Owner's role can never be changed here.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Role updated" } },
+      },
+    },
+    "/organizations/{organizationId}/members/{memberId}": {
+      delete: {
+        summary: "Remove a member",
+        description: "OWNER or ADMIN only. Cannot remove the Owner or yourself.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Member removed" } },
+      },
+    },
   },
   components: {
     securitySchemes: {

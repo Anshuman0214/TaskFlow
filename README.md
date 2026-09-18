@@ -2,7 +2,7 @@
 
 TaskFlow is a **multi-tenant task management platform** — think of it as a tool like Jira or Trello, where different companies (tenants) can each create an account, invite their team, and organize their work into projects and tasks.
 
-> **Status: 🟡 In active development.** Backend authentication is complete and a minimal frontend foundation now talks to it. There is no full app yet — see [Project Progress](#project-progress) below for exactly what's done.
+> **Status: 🟡 In active development.** Authentication and multi-tenant organizations are complete on the backend, with a minimal frontend foundation talking to it. There is no full app yet — see [Project Progress](#project-progress) below for exactly what's done.
 
 ---
 
@@ -59,7 +59,7 @@ Development follows a milestone plan — each milestone must be working and test
 |---|---|---|
 | **M0 – Project Foundation** | Server setup, database connections, security, logging, Docker, frontend scaffold | 🟡 ~95% |
 | **M1 – Authentication** | Register, login, logout, email verification, password reset | ✅ 100% |
-| M2 – Organizations | Create/manage companies and members | ⬜ Not started (planned — see `Docs/Track.md`) |
+| **M2 – Organizations** | Create/manage companies, invite members, roles | ✅ 100% |
 | M3 – Workspaces | Departments within an organization | ⬜ Not started |
 | M4 – Projects | Create and manage projects | ⬜ Not started |
 | M5 – Tasks | Create, assign, and track tasks | ⬜ Not started |
@@ -76,12 +76,13 @@ Development follows a milestone plan — each milestone must be working and test
 - A health-check endpoint reports whether the database and cache are online.
 - Security protections (rate limiting, safe headers, restricted cross-origin access) are in place.
 - Full authentication: register, verify email, login, logout (single device or all devices), refresh-token rotation, forgot/reset password. JWT access tokens + HTTP-only refresh cookie, sessions backed by Redis + MongoDB.
-- Automated tests run and pass for everything built so far.
+- Organizations: create a company account (you become the Owner), invite teammates by email, accept invitations, list/update member roles, remove members, update or delete the organization — all with role-based permission checks (Owner/Admin/Manager/Member/Guest).
+- Automated tests run and pass for everything built so far (26 tests).
 - A minimal frontend (`client/`) boots, calls the backend's health endpoint across origins with credentials, and renders live connection status in the browser.
 
 **What's not working yet:**
-- There's no UI to actually register/log in from the browser yet — the API supports it, but the login/register screens are Milestone 9 (Frontend) work, not built yet.
-- Organizations, workspaces, projects, and tasks (Milestones 2–8) haven't been built.
+- There's no UI to actually use any of this from the browser yet — the API supports it, but the screens are Milestone 9 (Frontend) work, not built yet.
+- Workspaces, projects, and tasks (Milestones 3–8) haven't been built.
 
 ---
 
