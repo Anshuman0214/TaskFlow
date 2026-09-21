@@ -32,16 +32,26 @@ The backend (`../server`) must be running, with its `CORS_ORIGIN` including `htt
 
 ```
 src/
-├── api/       → typed wrappers over the backend REST API + the axios client
-├── lib/       → shared setup (TanStack Query client, etc.)
-├── pages/     → route-level components
-├── App.tsx    → route definitions
-└── main.tsx   → app entry point, providers
+├── api/          → typed wrappers over the backend REST API + the axios client
+├── components/
+│   ├── ui/       → shared primitives (Button, TextField, Modal, Badge, Toast, …)
+│   └── layout/   → app shell, tab navigation
+├── context/      → AuthContext (current user, session boundary), ToastContext
+├── lib/          → shared setup (TanStack Query client, permissions, validation, API error helpers)
+├── pages/        → route-level components, one folder per resource
+│   ├── auth/           → login, register, verify email, forgot/reset password
+│   ├── organizations/  → org list, layout, members, settings
+│   ├── workspaces/     → workspace layout, projects list, members, settings
+│   ├── projects/       → project layout, tasks list, labels, settings
+│   └── tasks/          → task detail page
+├── routes/       → ProtectedRoute / PublicOnlyRoute guards
+├── App.tsx       → route definitions
+└── main.tsx      → app entry point, providers
 ```
 
 ## Scope
 
-This is the M0 foundation only: project scaffold, an API client wired to the backend
-(auth-token refresh interceptor, typed calls for every backend endpoint), and a status
-page proving the connection works. Login/register/dashboard screens are Milestone 9
-(Frontend) work — see `../Docs/Track.md`.
+Auth, Organizations, Workspaces, Projects, and Tasks all have a working UI — register through
+creating and managing tasks, role-gated to match the backend. Dashboard and Search screens are
+still pending (they depend on Milestone 8's backend APIs, which don't exist yet) — see
+`../Docs/Track.md`.

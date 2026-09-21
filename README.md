@@ -2,7 +2,7 @@
 
 TaskFlow is a **multi-tenant task management platform** — think of it as a tool like Jira or Trello, where different companies (tenants) can each create an account, invite their team, and organize their work into projects and tasks.
 
-> **Status: 🟡 In active development.** Authentication and multi-tenant organizations are complete on the backend, with a minimal frontend foundation talking to it. There is no full app yet — see [Project Progress](#project-progress) below for exactly what's done.
+> **Status: 🟡 In active development.** TaskFlow is a usable app locally: Auth, Organizations, Workspaces, Projects, and Tasks are complete end-to-end — backend API and a real frontend UI, register through creating and managing tasks. Collaboration (comments/attachments), Notifications, and Dashboard/Search haven't been built yet. See [Project Progress](#project-progress) below for exactly what's done.
 
 ---
 
@@ -17,7 +17,7 @@ Organization  (a company/team account)
                └── Task   (a single to-do item, with a status, priority, and due date)
 ```
 
-Team members can be invited into an organization, assigned roles (Owner, Admin, Manager, Member, Guest), and given tasks to work on. Tasks support comments, file attachments, and an activity history, so teams can collaborate without leaving the platform.
+Team members can be invited into an organization, assigned roles (Owner, Admin, Manager, Member, Guest), and given tasks to work on. Tasks support subtasks, labels, assignment, priorities, and an activity history. Comments and file attachments are planned but not built yet (Milestone 6).
 
 Companies' data is always kept separate — one organization can never see or access another organization's data. This is called **tenant isolation**, and it's a core rule the whole system is built around.
 
@@ -60,13 +60,13 @@ Development follows a milestone plan — each milestone must be working and test
 | **M0 – Project Foundation** | Server setup, database connections, security, logging, Docker, frontend scaffold | 🟡 ~95% |
 | **M1 – Authentication** | Register, login, logout, email verification, password reset | ✅ 100% |
 | **M2 – Organizations** | Create/manage companies, invite members, roles | ✅ 100% |
-| M3 – Workspaces | Departments within an organization | ⬜ Not started |
-| M4 – Projects | Create and manage projects | ⬜ Not started |
-| M5 – Tasks | Create, assign, and track tasks | ⬜ Not started |
+| **M3 – Workspaces** | Departments within an organization, workspace teams | ✅ 100% |
+| **M4 – Projects** | Create and manage projects, labels | ✅ 100% |
+| **M5 – Tasks** | Create, assign, and track tasks, subtasks | ✅ 100% |
 | M6 – Collaboration | Comments and file attachments | ⬜ Not started |
 | M7 – Notifications | Email and in-app alerts | ⬜ Not started |
 | M8 – Dashboard & Search | Overview screens and search | ⬜ Not started |
-| M9 – Frontend | The actual website UI | ⬜ Not started |
+| **M9 – Frontend** | The actual website UI | 🟡 ~85% (Dashboard/Search UI pending M8) |
 | M10 – Testing & Quality | Full test coverage, security review | ⬜ Not started |
 | M11 – Deployment | Putting it live on the internet | ⬜ Not started |
 | M12 – Release | Version 1.0 launch | ⬜ Not started |
@@ -76,13 +76,16 @@ Development follows a milestone plan — each milestone must be working and test
 - A health-check endpoint reports whether the database and cache are online.
 - Security protections (rate limiting, safe headers, restricted cross-origin access) are in place.
 - Full authentication: register, verify email, login, logout (single device or all devices), refresh-token rotation, forgot/reset password. JWT access tokens + HTTP-only refresh cookie, sessions backed by Redis + MongoDB.
-- Organizations: create a company account (you become the Owner), invite teammates by email, accept invitations, list/update member roles, remove members, update or delete the organization — all with role-based permission checks (Owner/Admin/Manager/Member/Guest).
-- Automated tests run and pass for everything built so far (26 tests).
-- A minimal frontend (`client/`) boots, calls the backend's health endpoint across origins with credentials, and renders live connection status in the browser.
+- Organizations: create a company account (you become the Owner), invite teammates by email, accept/decline invitations, list/update member roles, remove members, update or delete the organization — all with role-based permission checks (Owner/Admin/Manager/Member/Guest).
+- Workspaces: departments within an organization, with their own member roster, archive/delete.
+- Projects: create/manage inside a workspace, with labels, status workflow (Planning → Active → On Hold → Completed → Archived), archive/delete.
+- Tasks: create/assign/track inside a project, with subtasks, priorities, due dates, a status workflow, and an activity trail — soft delete with restore.
+- Automated tests run and pass for everything built so far (63 backend tests).
+- A full frontend (`client/`) is live: register/login/password-reset screens, and a working app for organizations, workspaces, projects, and tasks — create, invite, assign, edit, archive, delete, all through the actual UI, role-gated to match the backend.
 
 **What's not working yet:**
-- There's no UI to actually use any of this from the browser yet — the API supports it, but the screens are Milestone 9 (Frontend) work, not built yet.
-- Workspaces, projects, and tasks (Milestones 3–8) haven't been built.
+- Collaboration (comments, file attachments), Notifications, and Dashboard/Search (Milestones 6–8) haven't been built — so there's no UI for them either.
+- Restoring a soft-deleted task isn't reachable from the UI yet (the API supports it, but there's no "show deleted tasks" list to surface a restore action from).
 
 ---
 

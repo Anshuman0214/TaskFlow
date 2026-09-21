@@ -10,6 +10,7 @@ The backend for TaskFlow: a multi-tenant task management REST API.
 - JWT access tokens + HTTP-only refresh token cookies
 - Zod — request validation
 - Winston — logging
+- Nodemailer — email (falls back to a no-op JSON transport when no SMTP is configured)
 - Vitest + Supertest — testing
 - Swagger / OpenAPI — served at `/api/docs`
 
@@ -39,14 +40,15 @@ src/
 ├── database/     → MongoDB and Redis connections
 ├── docs/         → OpenAPI document
 ├── middleware/   → cross-cutting Express middleware (errors, validation, request logging)
-├── modules/      → one folder per domain (auth, users, organizations, audit, system, …), each
-│                   with its own routes → controller → service → repository → model
+├── modules/      → one folder per domain (auth, users, organizations, workspaces, projects,
+│                   tasks, audit, system, …), each with its own routes → controller → service
+│                   → repository → model
 ├── routes/       → route mounting (versioned under /api/v1)
 └── utils/        → shared helpers (AppError, logger, response shape)
 ```
 
-Layering follows `../Docs/Rules.md`: routes never contain logic, controllers never touch the database directly, and all persistence goes through a repository.
+Layering follows `../Docs/Rules.md`: routes never contain logic, controllers never touch the database directly, and all persistence goes through a repository. Every resource-scoped route composes its access check on top of `requireAuth` through a shared `resolveOrganizationAccess` helper (`modules/organizations/organization.middleware.ts`) — `requireOrganizationRole`, `requireWorkspaceRole`, `requireProjectRole`, and `requireTaskRole` all call it rather than re-checking membership ad hoc.
 
 ## Current status
 
-See `../Docs/Track.md` for the live milestone tracker. As of now: M0 (Project Foundation), M1 (Authentication), and M2 (Organizations) are complete; M3 (Workspaces) is up next.
+See `../Docs/Track.md` for the live milestone tracker. As of now: M0 (Project Foundation), M1 (Authentication), M2 (Organizations), M3 (Workspaces), M4 (Projects), and M5 (Tasks) are complete — the full backend for Org → Workspace → Project → Task, with roles, auditing, and 63 integration tests. M6 (Collaboration), M7 (Notifications), and M8 (Dashboard & Search) haven't been started yet.
