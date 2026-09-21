@@ -846,6 +846,20 @@ Side Effects
 •	Send Email
 •	Audit Log
 ________________________________________
+Invitation Endpoints (base path /api/v1/organizations)
+Accept Invitation
+POST /invitations/accept
+Request: { "token": "..." }
+List Pending Invitations
+GET /invitations/pending
+Returns pending, non-expired invitations addressed to the current user's email.
+Decline Invitation
+POST /invitations/{invitationId}/decline
+Authorization: the invitation must be addressed to the current user's email.
+Business Rules
+•	Invitations expire after 5 days.
+•	A declined invitation cannot later be accepted.
+________________________________________
 3. Update Member Role
 PATCH /{memberId}/role
 ________________________________________
@@ -908,7 +922,7 @@ ________________________________________
 GET /api/v1/workspaces/{workspaceId}
 ________________________________________
 Authorization
-Workspace Member
+Organization Member (any role — workspace visibility is org-scoped, not gated by WorkspaceMember; see Workspace Member Module below)
 ________________________________________
 4. Update Workspace
 PATCH /api/v1/workspaces/{workspaceId}
@@ -921,7 +935,7 @@ ________________________________________
 Editable Fields
 •	Name
 •	Description
-•	Status
+Status is not editable here — it only changes via the dedicated Archive endpoint (5).
 ________________________________________
 5. Archive Workspace
 PATCH /api/v1/workspaces/{workspaceId}/archive
@@ -931,8 +945,8 @@ Owner
 Admin
 ________________________________________
 Business Rules
-•	Archived workspaces become read-only.
-•	Existing data remains accessible.
+•	Archived workspaces become read-only: Update (4) and Add Workspace Member are rejected.
+•	Existing data remains accessible; deleting the workspace and removing members are still allowed.
 ________________________________________
 6. Delete Workspace
 DELETE /api/v1/workspaces/{workspaceId}
@@ -943,7 +957,45 @@ Admin
 ________________________________________
 Business Rules
 •	Workspace is soft deleted.
-•	Projects are archived according to cascade rules.
+•	Projects are archived according to cascade rules (once Projects exist — not yet built as of M3).
+•	WorkspaceMember rows are left as-is (orphaned but harmless — the workspace itself becomes unreachable).
+________________________________________
+Workspace Member Module
+Base Path
+/api/v1/workspaces/{workspaceId}/members
+________________________________________
+1. List Workspace Members
+GET /
+Authorization
+Organization Member (any role)
+________________________________________
+2. Add Workspace Member
+POST /
+Authorization
+Owner
+Admin
+Manager
+Request
+{
+  "userId": "..."
+}
+Business Rules
+•	The user must already be a member of the parent organization (400 if not).
+•	Rejects duplicate membership (409).
+•	Rejects if the workspace is archived (403).
+Side Effects
+•	Create WorkspaceMember
+•	Audit Log
+________________________________________
+3. Remove Workspace Member
+DELETE /{memberId}
+Authorization
+Owner
+Admin
+Manager
+Side Effects
+•	Delete WorkspaceMember
+•	Audit Log
 ________________________________________
 Organization Roles
 OWNER
@@ -968,6 +1020,8 @@ The following actions generate audit records:
 •	WORKSPACE_UPDATED
 •	WORKSPACE_ARCHIVED
 •	WORKSPACE_DELETED
+•	WORKSPACE_MEMBER_ADDED
+•	WORKSPACE_MEMBER_REMOVED
 
 Part 4 - Project & Task APIs
 ________________________________________
@@ -1073,7 +1127,9 @@ Admin
 Manager
 ________________________________________
 Business Rules
-Completed projects cannot return to Planning.
+•	Completed projects cannot return to Planning.
+•	An already-archived project rejects further updates through this endpoint (403) — matches DatabaseDesign.md's "archived projects remain searchable but are read-only."
+•	startDate must be before or equal to endDate.
 ________________________________________
 5. Archive Project
 Implemented using
@@ -1091,7 +1147,8 @@ Owner
 Admin
 ________________________________________
 Business Rules
-Projects are soft deleted.
+•	Projects are soft deleted.
+•	Allowed even on an archived project (deletion/cleanup isn't blocked by read-only).
 ________________________________________
 Task Module
 Base Path
@@ -1172,10 +1229,11 @@ GET /{taskId}
 ________________________________________
 Returns
 Task details including
-•	labels
-•	comments
-•	attachments
-•	subtasks
+•	labels (populated)
+•	subtasks (direct children)
+•	comments — not returned; TaskComments is M6 (Collaboration) scope, not built yet
+•	attachments — not returned; TaskAttachments is M6 (Collaboration) scope, not built yet
+404 if the task is soft-deleted (see Restore Task below for the one way back).
 ________________________________________
 4. Update Task
 Endpoint
@@ -1189,6 +1247,7 @@ Editable Fields
 •	dueDate
 •	assigneeId
 •	labelIds
+Rejected (403) if the task's status is ARCHIVED.
 ________________________________________
 Side Effects
 •	Task Activity
@@ -1200,7 +1259,8 @@ Endpoint
 DELETE /{taskId}
 ________________________________________
 Business Rules
-Soft delete only.
+•	Soft delete only.
+•	404 if the task is already deleted.
 ________________________________________
 6. Restore Task
 Endpoint
@@ -1208,6 +1268,9 @@ PATCH /{taskId}
 {
     "isDeleted":false
 }
+________________________________________
+Business Rules
+•	This is the *only* accepted body on an already-deleted task — any other field, or an update without isDeleted:false, 404s while the task is deleted (the same endpoint that edits a live task also restores a deleted one, so the two modes are mutually exclusive per request).
 ________________________________________
 7. Get Subtasks
 Endpoint
@@ -1299,12 +1362,18 @@ Project
 •	PROJECT_UPDATED
 •	PROJECT_ARCHIVED
 •	PROJECT_DELETED
+Label
+•	LABEL_CREATED
+•	LABEL_UPDATED
+•	LABEL_DELETED
 Task
 •	TASK_CREATED
 •	TASK_UPDATED
 •	TASK_ASSIGNED
 •	TASK_STATUS_CHANGED
 •	TASK_COMPLETED
+•	TASK_DELETED
+•	TASK_RESTORED
 •	TASK_RESTORED
 •	TASK_DELETED
 ________________________________________

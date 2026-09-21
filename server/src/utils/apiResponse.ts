@@ -5,6 +5,7 @@ interface ApiResponseOptions<T> {
   statusCode: number;
   message: string;
   data?: T;
+  meta?: Record<string, unknown>;
 }
 
 export const sendSuccessResponse = <T>({
@@ -12,10 +13,12 @@ export const sendSuccessResponse = <T>({
   statusCode,
   message,
   data,
+  meta,
 }: ApiResponseOptions<T>): Response => {
   return res.status(statusCode).json({
     success: true,
     message,
     data,
+    ...(meta ? { meta } : {}),
   });
 };

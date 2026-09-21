@@ -1,7 +1,7 @@
 import { Schema, model, Types } from "mongoose";
 import { AssignableOrganizationRole, ASSIGNABLE_ORGANIZATION_ROLES } from "./organization.types.js";
 
-export const INVITATION_STATUSES = ["PENDING", "ACCEPTED", "EXPIRED"] as const;
+export const INVITATION_STATUSES = ["PENDING", "ACCEPTED", "REJECTED", "EXPIRED"] as const;
 export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
 
 export interface IInvitation {

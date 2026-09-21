@@ -14,6 +14,14 @@ const envSchema = z.object({
 
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
+
+  // Optional: no SMTP provider is configured yet, so the mailer falls back
+  // to nodemailer's jsonTransport (logs, sends nothing) when these are unset.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  MAIL_FROM: z.string().default("TaskFlow <no-reply@taskflow.local>"),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

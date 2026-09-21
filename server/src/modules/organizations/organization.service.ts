@@ -5,9 +5,12 @@ import { findUserByEmail } from "../users/user.repository.js";
 import { createAuditLog } from "../audit/auditLog.repository.js";
 import {
   createInvitation,
+  findInvitationById,
   findPendingInvitationByTokenHash,
   invalidatePendingInvitations,
+  listPendingInvitationsForEmail,
   markInvitationAccepted,
+  markInvitationRejected,
 } from "./invitation.repository.js";
 import {
   createOrganization as createOrganizationRecord,
@@ -23,10 +26,12 @@ import {
   deleteMembership,
   findMembership,
   findMembershipById,
+  listMemberUserIds,
   listMembersForOrganization,
   listMembershipsForUser,
   updateMembershipRole,
 } from "./organizationMember.repository.js";
+import { revokeSessionsForOrganization } from "../auth/session.repository.js";
 import { IOrganization } from "./organization.types.js";
 import {
   AcceptInvitationInput,
@@ -37,7 +42,7 @@ import {
 } from "./organization.validation.js";
 import { generateRawToken, hashToken } from "../auth/token.util.js";
 
-const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const INVITATION_TTL_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
 
 const slugify = (name: string): string =>
   name
@@ -145,11 +150,17 @@ export const updateOrganization = async (
 };
 
 export const deleteOrganization = async (userId: string, organizationId: string): Promise<void> => {
+  const memberUserIds = await listMemberUserIds(organizationId);
   const organization = await softDeleteOrganization(organizationId, userId);
 
   if (!organization) {
     throw new AppError("Organization not found", 404, "RESOURCE_NOT_FOUND");
   }
+
+  await revokeSessionsForOrganization(
+    organizationId,
+    memberUserIds.map((id) => id.toString()),
+  );
 
   await createAuditLog({
     organizationId,
@@ -227,6 +238,28 @@ export const acceptInvitation = async (
   }
 
   await markInvitationAccepted(invitation._id.toString());
+};
+
+export const listPendingInvitations = async (userEmail: string) => {
+  const invitations = await listPendingInvitationsForEmail(userEmail);
+  return invitations.filter((invitation) => invitation.expiresAt.getTime() > Date.now());
+};
+
+export const declineInvitation = async (
+  userEmail: string,
+  invitationId: string,
+): Promise<void> => {
+  const invitation = await findInvitationById(invitationId);
+
+  if (!invitation || invitation.status !== "PENDING" || invitation.expiresAt.getTime() < Date.now()) {
+    throw new AppError("Invalid or expired invitation", 400, "INVALID_TOKEN");
+  }
+
+  if (invitation.email !== userEmail.toLowerCase()) {
+    throw new AppError("This invitation was not addressed to your account", 403, "FORBIDDEN");
+  }
+
+  await markInvitationRejected(invitation._id.toString());
 };
 
 export const updateMemberRole = async (

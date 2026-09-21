@@ -23,3 +23,14 @@ export const invalidatePendingInvitations = (organizationId: string, email: stri
 
 export const markInvitationAccepted = (id: string) =>
   Invitation.findByIdAndUpdate(id, { status: "ACCEPTED" });
+
+export const markInvitationRejected = (id: string) =>
+  Invitation.findByIdAndUpdate(id, { status: "REJECTED" });
+
+export const findInvitationById = (id: string) => Invitation.findById(id);
+
+export const listPendingInvitationsForEmail = (email: string) =>
+  Invitation.find({ email: email.toLowerCase(), status: "PENDING" }).populate(
+    "organizationId",
+    "name slug",
+  );

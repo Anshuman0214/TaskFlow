@@ -5,10 +5,12 @@ import { getCurrentUser } from "../auth/auth.service.js";
 import {
   acceptInvitation,
   createOrganization,
+  declineInvitation,
   deleteOrganization,
   getOrganization,
   inviteMember,
   listMembers,
+  listPendingInvitations,
   listUserOrganizations,
   removeMember,
   updateMemberRole,
@@ -170,6 +172,45 @@ export const acceptInvitationController = async (
       res,
       statusCode: 200,
       message: "Invitation accepted successfully.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listPendingInvitationsController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const currentUser = await getCurrentUser((req as AuthedRequest).userId);
+    const invitations = await listPendingInvitations(currentUser.email);
+
+    sendSuccessResponse({
+      res,
+      statusCode: 200,
+      message: "Pending invitations retrieved successfully.",
+      data: invitations,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const declineInvitationController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const currentUser = await getCurrentUser((req as AuthedRequest).userId);
+    await declineInvitation(currentUser.email, req.params.invitationId as string);
+
+    sendSuccessResponse({
+      res,
+      statusCode: 200,
+      message: "Invitation declined.",
     });
   } catch (error) {
     next(error);

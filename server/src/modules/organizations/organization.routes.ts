@@ -12,11 +12,13 @@ import {
 import {
   acceptInvitationController,
   createOrganizationController,
+  declineInvitationController,
   deleteOrganizationController,
   getOrganizationController,
   inviteMemberController,
   listMembersController,
   listOrganizationsController,
+  listPendingInvitationsController,
   removeMemberController,
   updateMemberRoleController,
   updateOrganizationController,
@@ -31,6 +33,8 @@ router.post(
   validateBody(acceptInvitationSchema),
   acceptInvitationController,
 );
+router.get("/invitations/pending", listPendingInvitationsController);
+router.post("/invitations/:invitationId/decline", declineInvitationController);
 
 router.post("/", validateBody(createOrganizationSchema), createOrganizationController);
 router.get("/", listOrganizationsController);

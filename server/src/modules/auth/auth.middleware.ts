@@ -4,6 +4,7 @@ import { verifyAccessToken } from "./token.util.js";
 
 export interface AuthedRequest extends Request {
   userId: string;
+  sessionId?: string;
 }
 
 export const requireAuth = (
@@ -23,6 +24,9 @@ export const requireAuth = (
   try {
     const payload = verifyAccessToken(token);
     (req as AuthedRequest).userId = payload.userId;
+    if (payload.sessionId) {
+      (req as AuthedRequest).sessionId = payload.sessionId;
+    }
     next();
   } catch {
     next(new AppError("Invalid or expired access token", 401, "TOKEN_EXPIRED"));

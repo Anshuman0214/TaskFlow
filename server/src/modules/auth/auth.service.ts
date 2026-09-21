@@ -72,7 +72,7 @@ const issueSessionTokens = async (
   const refreshToken = signRefreshToken({ userId, sessionId });
   await rotateSession(userId, sessionId, hashToken(refreshToken));
 
-  const accessToken = signAccessToken({ userId });
+  const accessToken = signAccessToken({ userId, sessionId });
 
   return { accessToken, refreshToken };
 };
@@ -164,7 +164,7 @@ export const refreshSession = async (refreshToken: string): Promise<RefreshResul
   const newRefreshToken = signRefreshToken({ userId, sessionId });
   await rotateSession(userId, sessionId, hashToken(newRefreshToken));
 
-  const accessToken = signAccessToken({ userId });
+  const accessToken = signAccessToken({ userId, sessionId });
 
   logger.info("Authentication event", { event: "SESSION_REFRESHED", userId });
 

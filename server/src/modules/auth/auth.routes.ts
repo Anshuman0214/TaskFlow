@@ -1,8 +1,10 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import jwt from "jsonwebtoken";
 import { env } from "../../config/env.js";
 import { validateBody } from "../../middleware/validate.middleware.js";
 import { requireAuth } from "./auth.middleware.js";
+import { REFRESH_COOKIE_NAME } from "./auth.config.js";
 import {
   forgotPasswordSchema,
   loginSchema,
@@ -32,7 +34,19 @@ const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, skip });
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, skip });
 const forgotPasswordLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, skip });
 const verifyEmailLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, skip });
-const refreshLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 60, skip });
+// Keyed by the refresh token's userId (decoded, not verified — the real
+// verification happens in the service layer) so the 60/hour limit is per
+// user as the spec requires, not per IP where it can't tell users apart.
+const refreshLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 60,
+  skip,
+  keyGenerator: (req) => {
+    const token = req.cookies?.[REFRESH_COOKIE_NAME];
+    const decoded = token ? (jwt.decode(token) as { userId?: string } | null) : null;
+    return decoded?.userId ?? ipKeyGenerator(req.ip ?? "unknown");
+  },
+});
 
 router.post("/register", registerLimiter, validateBody(registerSchema), registerController);
 router.post(

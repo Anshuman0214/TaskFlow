@@ -18,6 +18,9 @@ export const findMembershipById = (organizationId: string, memberId: string) =>
 export const listMembersForOrganization = (organizationId: string) =>
   OrganizationMember.find({ organizationId }).populate("userId", "name email");
 
+export const listMemberUserIds = (organizationId: string): Promise<Types.ObjectId[]> =>
+  OrganizationMember.find({ organizationId }).distinct("userId");
+
 export const listMembershipsForUser = (userId: string) =>
   OrganizationMember.find({ userId });
 

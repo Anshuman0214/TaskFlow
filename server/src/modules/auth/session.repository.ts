@@ -6,6 +6,9 @@ import { REFRESH_TOKEN_TTL_SECONDS } from "./auth.config.js";
 const redisKey = (userId: string, sessionId: string): string =>
   `session:${userId}:${sessionId}`;
 
+const orgAccessKey = (userId: string, sessionId: string): string =>
+  `session:orgs:${userId}:${sessionId}`;
+
 interface CreateSessionInput {
   userId: string;
   refreshTokenHash: string;
@@ -82,9 +85,14 @@ export const revokeSession = async (
 };
 
 export const revokeAllSessionsForUser = async (userId: string): Promise<void> => {
-  // ponytail: KEYS is O(n) over the keyspace; fine at this scale, switch to
-  // SCAN (or a per-user Redis SET tracking session ids) if the keyspace grows large.
-  const keys = await redisClient.keys(redisKey(userId, "*"));
+  // SCAN walks the keyspace in small batches instead of blocking Redis with
+  // KEYS, which would otherwise scan the whole keyspace in one shot.
+  const keys: string[] = [];
+  const stream = redisClient.scanStream({ match: redisKey(userId, "*"), count: 100 });
+
+  for await (const chunk of stream as AsyncIterable<string[]>) {
+    keys.push(...chunk);
+  }
 
   if (keys.length > 0) {
     await redisClient.del(...keys);
@@ -94,4 +102,49 @@ export const revokeAllSessionsForUser = async (userId: string): Promise<void> =>
     { userId: new Types.ObjectId(userId), isRevoked: false },
     { isRevoked: true, revokedAt: new Date() },
   );
+};
+
+// Records that this login session has been used to access an organization,
+// so a later org deletion can tell whether the session still has other orgs
+// left (see revokeSessionsForOrganization). Sliding TTL matches the session's.
+export const recordSessionOrgAccess = async (
+  userId: string,
+  sessionId: string,
+  organizationId: string,
+): Promise<void> => {
+  const key = orgAccessKey(userId, sessionId);
+  await redisClient.sadd(key, organizationId);
+  await redisClient.expire(key, REFRESH_TOKEN_TTL_SECONDS);
+};
+
+// Revokes a member's session only when we have direct evidence (the tracked
+// org-access set) that the deleted org was the ONLY org this session ever
+// touched. A session with no tracked set (never recorded, e.g. it predates
+// this feature or never hit an org route) is left alone — fail open rather
+// than logging a user out of unrelated orgs on a guess.
+export const revokeSessionsForOrganization = async (
+  organizationId: string,
+  memberUserIds: string[],
+): Promise<void> => {
+  for (const userId of memberUserIds) {
+    const sessions = await Session.find({
+      userId: new Types.ObjectId(userId),
+      isRevoked: false,
+    }).select("_id");
+
+    for (const session of sessions) {
+      const sessionId = session._id.toString();
+      const key = orgAccessKey(userId, sessionId);
+
+      const tracked = await redisClient.exists(key);
+      if (!tracked) continue;
+
+      await redisClient.srem(key, organizationId);
+      const remaining = await redisClient.scard(key);
+
+      if (remaining === 0) {
+        await revokeSession(userId, sessionId);
+      }
+    }
+  }
 };

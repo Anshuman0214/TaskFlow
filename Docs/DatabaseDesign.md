@@ -293,6 +293,7 @@ These collections represent the primary business domain.
 •	Organizations
 •	OrganizationMembers
 •	Workspaces
+•	WorkspaceMembers
 •	Projects
 •	Tasks
 ________________________________________
@@ -434,11 +435,38 @@ Workspace
 
 ├── Organization
 
+├── Members
+
 ├── Projects
 
 └── AuditLogs
 ________________________________________
-5. Projects
+5. WorkspaceMembers
+Purpose
+Represents the team working together inside a specific workspace — who is actively assigned to it, distinct from being a member of the parent organization.
+________________________________________
+Responsibilities
+•	Track which users work in a workspace
+•	Support per-workspace rosters for future task assignment (Projects, Tasks)
+________________________________________
+Relationships
+WorkspaceMember
+
+├── User
+
+├── Workspace
+
+└── Organization
+________________________________________
+Why Separate Collection?
+Same reasoning as OrganizationMembers: a workspace's roster is queried and updated independently of the workspace document itself, and a user's workspace memberships are queried independently of any single workspace.
+________________________________________
+Business Rules
+•	A user must already be a member of the parent organization to be added to one of its workspaces.
+•	Permissions are not stored here — CRUD access to a workspace and its roster is governed by the caller's OrganizationMember role, resolved through the workspace's organizationId. WorkspaceMember is a roster, not a role table.
+•	Adding members to an archived workspace is rejected; removing them is still allowed.
+________________________________________
+6. Projects
 Purpose
 A project groups related tasks.
 Examples
@@ -462,7 +490,7 @@ Project
 
 └── AuditLogs
 ________________________________________
-6. Tasks
+7. Tasks
 Purpose
 Represents the smallest unit of work.
 Every task belongs to exactly one project.
@@ -509,6 +537,7 @@ Tenant Ownership
 The following collections are tenant-aware and must include an organizationId reference.
 •	OrganizationMembers
 •	Workspaces
+•	WorkspaceMembers
 •	Projects
 •	Tasks
 •	TaskComments
@@ -653,9 +682,9 @@ Attachments
 ________________________________________
 Business Rules
 •	Every project belongs to exactly one workspace.
-•	Project names are unique within a workspace.
-•	Archived projects cannot receive new tasks.
-•	Deleting a workspace archives its projects.
+•	Project names are unique within a workspace (application-level check, not a DB index — only `key` has a unique compound index; see Indexes).
+•	Archived projects cannot receive new tasks; archived projects also reject further edits through Update (read-only, per Lifecycle above) — deletion is still allowed.
+•	Deleting a workspace archives its projects (once Projects exist to cascade to — implemented as of M4; the workspace-deletion side of this cascade isn't built, see Track.md M3's technical debt).
 •	Projects are soft deleted.
 ________________________________________
 Common Queries
@@ -690,7 +719,7 @@ Responsibilities
 ________________________________________
 Fields
 Base Entity
-Standard Base Entity fields.
+_id, createdAt, organizationId (denormalized from the parent project, for tenant-scoped queries). No soft-delete fields — deliberate simplification, since Labels are lightweight reference data, not a core auditable entity like Project/Workspace/Organization, and the business rule below is a hard removal ("deleting a label removes it from all associated tasks"), not an archive.
 Business Fields
 Field	Type	Required	Description
 projectId	ObjectId	Yes	Parent project
@@ -772,9 +801,9 @@ reporterId	ObjectId	Yes	Task creator/reporter
 dueDate	Date	No	Due date
 startDate	Date	No	Planned start
 completedAt	Date	No	Completion time
-estimatedHours	Number	No	Estimated effort
-actualHours	Number	No	Actual effort
 labelIds	ObjectId[]	No	Associated labels
+________________________________________
+Not implemented (M5): estimatedHours/actualHours appear in this table but no endpoint in ApiSpecifications.md's Task Module ever accepts them (not in Create's request body, not in Update's Editable Fields) — there's no way to set them through the API as specified, so they were left off the actual model rather than shipping unreachable fields. Add them (model + validation + an endpoint field) the day something needs to set them.
 ________________________________________
 Status
 TODO
@@ -832,9 +861,9 @@ Business Rules
 •	Every task belongs to one project.
 •	Tasks may have one parent task.
 •	Root tasks have a null parentTaskId.
-•	Archived tasks cannot be modified.
-•	Completed tasks record completedAt automatically.
-•	Soft delete is mandatory.
+•	Archived tasks cannot be modified (403 on Update; delete is still allowed, same as Workspace/Project).
+•	Completed tasks record completedAt automatically; moving status away from DONE clears it back to null (not explicitly specified, but the natural inverse — a task un-done shouldn't keep a stale completion timestamp).
+•	Soft delete is mandatory. Restore goes through the same Update endpoint (PATCH { isDeleted: false }) rather than a dedicated route — see ApiSpecifications.md's Restore Task.
 ________________________________________
 Common Queries
 •	Tasks by project
@@ -910,21 +939,22 @@ Examples:
 ________________________________________
 Fields
 Base Entity
-Standard Base Entity fields.
+_id, createdAt, organizationId (denormalized, for tenant-scoped queries). No soft-delete fields — matches "append-only" below; there's nothing to soft-delete.
 Business Fields
 Field	Type	Required
 taskId	ObjectId	Yes
 actorId	ObjectId	Yes
-action	Enum	Yes
+action	String	Yes
 previousValue	Mixed	No
 newValue	Mixed	No
 metadata	Mixed	No
+`action` is implemented as a free string, not a real Mongo enum constraint — same choice `AuditLog` already made (`server/src/modules/audit/auditLog.model.ts`), for consistency. Values in use as of M5: TASK_CREATED, TASK_UPDATED, TASK_ASSIGNED, TASK_STATUS_CHANGED, TASK_COMPLETED, TASK_DELETED, TASK_RESTORED.
 ________________________________________
 Business Rules
 •	Activities are append-only.
 •	Activities cannot be edited.
 •	Activities cannot be deleted except under administrative retention policies.
-•	Every significant change to a task generates an activity record.
+•	Every significant change to a task generates an activity record — written alongside (not instead of) an AuditLog entry for the same event.
 
 System Collections
 System collections support authentication, collaboration, auditing, and infrastructure. They are not part of the core business domain but are essential for running the application.
@@ -1093,6 +1123,10 @@ Workspaces
 Compound Index
 •	organizationId + name
 ________________________________________
+WorkspaceMembers
+Compound Index
+•	workspaceId + userId (unique)
+________________________________________
 Projects
 Compound Index
 •	organizationId + workspaceId
@@ -1161,17 +1195,18 @@ ________________________________________
 Cascade Rules
 Organization
 Deleting an organization:
-•	Soft deletes workspaces.
+•	Does not touch its Workspace or WorkspaceMember documents directly — they become orphaned but harmless, since every workspace route resolves the organization first (`isDeleted: false`) and 404s once it's gone. Same pattern M2 established for OrganizationMember.
 •	Soft deletes projects.
 •	Soft deletes tasks.
-•	Revokes active sessions for members of that organization.
+•	Revokes a member's session only if the deleted organization was the only one that session had accessed (sessions are global per user, not per-organization, so a session still tied to another org is left alone).
 •	Archives notifications.
 •	Preserves audit logs.
 ________________________________________
 Workspace
 Deleting a workspace:
-•	Soft deletes projects.
+•	Soft deletes projects (once Projects exist — not yet built as of M3).
 •	Soft deletes tasks.
+•	Does not touch its WorkspaceMember rows — orphaned but harmless, same reasoning as Organization → OrganizationMember.
 •	Preserves audit history.
 ________________________________________
 Project

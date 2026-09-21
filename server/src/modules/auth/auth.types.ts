@@ -21,6 +21,9 @@ export interface RefreshResult {
 
 export interface AccessTokenPayload {
   userId: string;
+  // Optional: tokens issued before session-org tracking was added won't have
+  // it, and they're short-lived (15m) so they age out on their own.
+  sessionId?: string;
 }
 
 export interface RefreshTokenPayload {

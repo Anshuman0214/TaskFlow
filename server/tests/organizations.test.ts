@@ -4,6 +4,7 @@ import app from "../src/app.js";
 import { User } from "../src/modules/users/user.model.js";
 import { Organization } from "../src/modules/organizations/organization.model.js";
 import { OrganizationMember } from "../src/modules/organizations/organizationMember.model.js";
+import { Invitation } from "../src/modules/organizations/invitation.model.js";
 import * as mailer from "../src/utils/mailer.js";
 
 const STRONG_PASSWORD = "StrongPass1!";
@@ -16,7 +17,12 @@ const uniqueEmail = (): string => {
   return email;
 };
 
-const registerAndLogin = async (): Promise<{ accessToken: string; userId: string; email: string }> => {
+const registerAndLogin = async (): Promise<{
+  accessToken: string;
+  userId: string;
+  email: string;
+  cookies: string[];
+}> => {
   const email = uniqueEmail();
 
   await request(app)
@@ -33,7 +39,12 @@ const registerAndLogin = async (): Promise<{ accessToken: string; userId: string
     .post("/api/v1/auth/login")
     .send({ email, password: STRONG_PASSWORD });
 
-  return { accessToken: loginRes.body.data.accessToken, userId: user!._id.toString(), email };
+  return {
+    accessToken: loginRes.body.data.accessToken,
+    userId: user!._id.toString(),
+    email,
+    cookies: loginRes.headers["set-cookie"] as unknown as string[],
+  };
 };
 
 const createOrg = async (accessToken: string, name: string) => {
@@ -49,6 +60,7 @@ const createOrg = async (accessToken: string, name: string) => {
 afterAll(async () => {
   await User.deleteMany({ email: { $in: testEmails } });
   await OrganizationMember.deleteMany({ organizationId: { $in: testOrgIds } });
+  await Invitation.deleteMany({ organizationId: { $in: testOrgIds } });
   await Organization.deleteMany({ _id: { $in: testOrgIds } });
 });
 
@@ -212,5 +224,102 @@ describe("invitations and membership management", () => {
       .send({ email: "someone@example.com", role: "OWNER" });
 
     expect(res.status).toBe(422);
+  });
+});
+
+describe("pending invitations: list and decline", () => {
+  it("lists a pending invitation for the invitee and lets them decline it", async () => {
+    const owner = await registerAndLogin();
+    const invitee = await registerAndLogin();
+    const org = await createOrg(owner.accessToken, "Invite List Co");
+    const organizationId = org.body.data._id;
+
+    await request(app)
+      .post(`/api/v1/organizations/${organizationId}/members`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ email: invitee.email, role: "MEMBER" });
+
+    const listRes = await request(app)
+      .get("/api/v1/organizations/invitations/pending")
+      .set("Authorization", `Bearer ${invitee.accessToken}`);
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.data).toHaveLength(1);
+
+    const invitationId = listRes.body.data[0]._id;
+
+    const declineRes = await request(app)
+      .post(`/api/v1/organizations/invitations/${invitationId}/decline`)
+      .set("Authorization", `Bearer ${invitee.accessToken}`);
+    expect(declineRes.status).toBe(200);
+
+    const afterDeclineList = await request(app)
+      .get("/api/v1/organizations/invitations/pending")
+      .set("Authorization", `Bearer ${invitee.accessToken}`);
+    expect(afterDeclineList.body.data).toHaveLength(0);
+
+    const invitation = await Invitation.findById(invitationId);
+    expect(invitation?.status).toBe("REJECTED");
+  });
+
+  it("rejects declining an invitation addressed to someone else", async () => {
+    const owner = await registerAndLogin();
+    const invitee = await registerAndLogin();
+    const outsider = await registerAndLogin();
+    const org = await createOrg(owner.accessToken, "Invite Guard Co");
+    const organizationId = org.body.data._id;
+
+    await request(app)
+      .post(`/api/v1/organizations/${organizationId}/members`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ email: invitee.email, role: "MEMBER" });
+
+    const invitation = await Invitation.findOne({ organizationId, email: invitee.email });
+
+    const res = await request(app)
+      .post(`/api/v1/organizations/invitations/${invitation!._id.toString()}/decline`)
+      .set("Authorization", `Bearer ${outsider.accessToken}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("organization deletion revokes sessions with no remaining org access", () => {
+  it("revokes a session whose only accessed organization was deleted", async () => {
+    const owner = await registerAndLogin();
+    const org = await createOrg(owner.accessToken, "Solo Access Co");
+    const organizationId = org.body.data._id;
+
+    // Touch the org so this login session gets tracked against it.
+    await request(app)
+      .get(`/api/v1/organizations/${organizationId}`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+
+    const deleteRes = await request(app)
+      .delete(`/api/v1/organizations/${organizationId}`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(deleteRes.status).toBe(200);
+
+    const refreshRes = await request(app).post("/api/v1/auth/refresh").set("Cookie", owner.cookies);
+    expect(refreshRes.status).toBe(401);
+  });
+
+  it("keeps a session alive when the member still belongs to another organization", async () => {
+    const owner = await registerAndLogin();
+    const orgA = await createOrg(owner.accessToken, "Multi Access A");
+    const orgB = await createOrg(owner.accessToken, "Multi Access B");
+
+    await request(app)
+      .get(`/api/v1/organizations/${orgA.body.data._id}`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    await request(app)
+      .get(`/api/v1/organizations/${orgB.body.data._id}`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+
+    const deleteRes = await request(app)
+      .delete(`/api/v1/organizations/${orgA.body.data._id}`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(deleteRes.status).toBe(200);
+
+    const refreshRes = await request(app).post("/api/v1/auth/refresh").set("Cookie", owner.cookies);
+    expect(refreshRes.status).toBe(200);
   });
 });
