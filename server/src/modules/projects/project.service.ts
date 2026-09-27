@@ -2,6 +2,7 @@ import { HydratedDocument } from "mongoose";
 import { AppError } from "../../utils/AppError.js";
 import { createAuditLog } from "../audit/auditLog.repository.js";
 import { findWorkspaceById } from "../workspaces/workspace.repository.js";
+import { notifyProjectArchived } from "../notifications/notification.events.js";
 import {
   createProject as createProjectRecord,
   findProjectByKey,
@@ -116,6 +117,10 @@ export const updateProject = async (
     action: isArchiving ? "PROJECT_ARCHIVED" : "PROJECT_UPDATED",
     newValue: input,
   });
+
+  if (isArchiving) {
+    await notifyProjectArchived(userId, updated);
+  }
 
   return updated;
 };

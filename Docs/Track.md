@@ -12,10 +12,10 @@ M2 - Organizations	✅	100%
 M3 - Workspaces	✅	100%
 M4 - Projects	✅	100%
 M5 - Tasks	✅	100%
-M6 - Collaboration	⬜	0%
-M7 - Notifications	⬜	0%
-M8 - Dashboard & Search	⬜	0%
-M9 - Frontend Integration	🟡	85%
+M6 - Collaboration	✅	100%
+M7 - Notifications	✅	100%
+M8 - Dashboard & Search	✅	100%
+M9 - Frontend Integration	✅	100%
 M10 - Testing & Quality	⬜	0%
 M11 - Deployment	⬜	0%
 M12 - Release	⬜	0%
@@ -123,22 +123,40 @@ Exit Criteria
 •	✅ Manually verified end-to-end against a live dev server: create org → workspace (+ member) → project → label → task (with label) → subtask (parentTaskId auto-set) → assign (workspace-membership check, and its rejection) → get (labels + subtasks populated) → status → DONE (completedAt set) → delete → 404 → restore → visible again
 ________________________________________
 M6 — Collaboration
-•	Comments
-•	Attachments
-•	Cloudinary Integration
-•	Activity Timeline
+•	✅ Comments (`/api/v1/tasks/:taskId/comments`, create/list-paginated/update/soft-delete; `mentionedUserIds` must all be members of the task's organization — an unvalidated mention would let any member push a notification at any account; edit/delete allowed for the comment's author or an ADMIN/OWNER, enforced in the service since the check needs the comment itself, with the route only gating "can write at all")
+•	✅ Attachments (`/api/v1/tasks/:taskId/attachments`, multer `memoryStorage` → `utils/storage.ts`; fixed MIME allowlist, `MAX_UPLOAD_BYTES` cap (default 10MB), MulterError translated to a 422 so it isn't flattened to a 500; only metadata in Mongo, never binaries; delete soft-deletes the metadata row for audit and permanently removes the stored asset)
+•	✅ Cloudinary Integration (`utils/storage.ts` — env-gated exactly like `utils/mailer.ts`: Cloudinary when `CLOUDINARY_CLOUD_NAME` is set, otherwise writes under `UPLOAD_DIR` and serves from `/uploads` via `express.static`. Call sites never change. No Cloudinary account is configured yet, so the local path is what runs today — see Technical Debt)
+•	✅ Activity Timeline (`GET /api/v1/tasks/:taskId/activities`) — this is a **read** endpoint over the `TaskActivity` collection M5 had been writing to since it was introduced; nothing had ever read it. Comment and attachment events now write to it too.
+•	✅ `AuditLog`/`TaskActivity` events: COMMENT_CREATED/UPDATED/DELETED, ATTACHMENT_UPLOADED/DELETED
+Routing note: mounted at `/api/v1/tasks/:taskId/...` per `Docs/ApiSpecifications.md` Part 5, even though the task module itself lives under `/projects/:projectId/tasks`. This works unchanged because `requireTaskRole` only cross-checks `:projectId` when the URL actually carries one.
+Exit Criteria
+•	✅ All endpoints implemented, validated (Zod), authorized (`requireAuth` + `requireTaskRole`), and covered by integration tests (10 tests in `tests/collaboration.test.ts`)
+•	✅ `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm test` all pass (73 tests total at this point)
 ________________________________________
 M7 — Notifications
-•	Notification APIs
-•	BullMQ
-•	Email Notifications
-•	Reminder Jobs
+•	✅ Notification APIs (`/api/v1/notifications`: list with `?page`/`?limit`/`?isRead`/`?type` and an `unreadCount` in `meta`, mark-read, mark-all-read, soft-delete). **The only module with no organization role check** — a notification belongs to a person, so `requireAuth`'s `userId` is the entire authorization story and every query filters on it. `PATCH /read-all` is registered before `PATCH /:notificationId` or "read-all" would be matched as an id.
+•	✅ BullMQ (`notifications/notification.queue.ts`) on the existing Redis, but with its own `ioredis` connection — BullMQ blocks on BRPOPLPUSH and requires `maxRetriesPerRequest: null`, so it cannot share `database/redis.ts`'s client. Worker runs in-process, started from `server.ts`. A notification that can't be enqueued is logged and swallowed: the task/comment write has already succeeded and must not fail because of it.
+•	✅ Email Notifications (the worker writes the in-app row then optionally mails the same title/message through the existing `utils/mailer.ts`; in-app-only is the default — mentions and assignments get an email, a comment on a task you merely own does not)
+•	✅ Reminder Jobs (hourly repeatable job via `upsertJobScheduler`, sweeping tasks due within 24h that are assigned and not DONE/ARCHIVED). Deliberately re-derived from the Task collection each run rather than scheduling a delayed job per task at write time: a `dueDate` can change or be cleared any number of times, and a standing per-task job would then have to be found and cancelled. Idempotent via a `metadata.taskId` + `metadata.dueDate` existence check, so the hourly sweep never duplicates a reminder.
+•	✅ Producers wired into the existing services rather than bolted on: task assigned/updated/completed (M5), comment added incl. mentions (M6), invitation sent/accepted (M2), project archived (M4). All copy lives in one `notification.events.ts`; nobody is ever notified of their own action, and a recipient who appears twice (assignee who is also the reporter) gets one notification.
+Testing note: under `NODE_ENV=test` `enqueueNotification` dispatches inline instead of queueing, so tests assert on the resulting `Notification` document directly rather than racing a background consumer. The real worker path was verified separately against a running dev server (see Exit Criteria).
+Scope note: `INVITATION_SENT` only produces an in-app notification when the invitee already has an account — a notification needs a `userId`, and an invite may go to a stranger. The invitation email reaches everyone else.
+Exit Criteria
+•	✅ All endpoints implemented, validated (Zod), covered by integration tests (12 tests in `tests/notifications.test.ts`)
+•	✅ `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm test` all pass (85 tests total at this point)
+•	✅ Verified against a live dev server with the real BullMQ worker running (not the inline test path): assigning a task and mentioning someone in a comment both produced the expected `TASK_ASSIGNED`/`COMMENT_ADDED` notifications asynchronously, with a correct `unreadCount`, and mark-all-read cleared them
 ________________________________________
 M8 — Dashboard & Search
-•	Dashboard APIs
-•	Analytics
-•	Search APIs
-•	Redis Cache
+•	✅ Dashboard APIs (`/api/v1/dashboard`, read-only): `GET /summary` and `GET /productivity` are **personal** (scoped to the caller inside one org, so they take `?organizationId`); `GET /workspaces/:workspaceId` and `GET /projects/:projectId` borrow their resource's existing role check.
+•	✅ Analytics (Mongo aggregation, not app-side counting): per-project progress for a workspace comes from one `$group` over its tasks rather than 2N count queries; project dashboard groups by status and priority; productivity averages wall-clock hours from creation to completion and buckets completions by ISO week (`%G-W%V`, so weeks don't split oddly across a year boundary).
+•	✅ Search APIs (`/api/v1/search`, `/search/tasks`, `/search/projects`) on **Mongo `$text` indexes** — a native platform feature rather than a regex scan. One text index per collection, so Task's covers title+description and Project's covers name+key+description, with weights so a title hit outranks a passing mention in the body. Results sort by `textScore` when there's a query and newest-first otherwise. Users are the exception: they're global documents, so their org scope comes from `OrganizationMember` and matching is a bounded case-insensitive regex — a text index there would index every tenant's users into one global index.
+•	✅ Redis Cache (`utils/cache.ts`, ~40 lines, no cache library — `SETEX` plus JSON is the whole job). Dashboard endpoints only, 60s TTL, and **the TTL is the entire invalidation strategy** — nothing invalidates explicitly. Every path fails open: a Redis outage degrades the dashboard to "slow", never to "broken". Invalidation-by-prefix uses `scanStream`, never `KEYS`, matching the rule `session.repository.ts` already follows.
+•	✅ Tenant isolation: every search function takes `organizationId` as its first argument and puts it in the filter; `requireOrganizationAccessFromQuery` proves membership before any query is built. There is no cross-org search, ever.
+Refactor (a net deletion): M3's `requireOrganizationAccessForWorkspaceList` did exactly the job the dashboard and search routes needed — resolve the tenant from `?organizationId` when there's no `:organizationId` param to derive it from. Generalised into `requireOrganizationAccessFromQuery` in `organizations/organization.middleware.ts` (now role-aware), workspace routes switched to it, and the workspace-specific copy deleted rather than leaving two near-identical middlewares.
+Exit Criteria
+•	✅ All endpoints implemented, validated (Zod — `validateQuery` runs before the access check so a missing `organizationId` is a 422 rather than a 400 from inside the access helper), and covered by integration tests (14 tests in `tests/dashboard.search.test.ts`, including a cross-tenant rejection and a check that password hashes never leave the users collection)
+•	✅ `pnpm typecheck`, `pnpm build`, `pnpm lint`, `pnpm test` all pass (99 tests total)
+•	✅ Verified against a live dev server: every dashboard endpoint, a cache hit on the second call, global search finding both a task and a project, a filtered task search, and a 403 for a non-member
 ________________________________________
 M9 — Frontend
 •	✅ Authentication UI (register/verify/login/forgot-reset password, all against the existing `api/auth.ts` — no backend changes needed, that layer was already complete from M0)
@@ -146,8 +164,11 @@ M9 — Frontend
 •	✅ Workspace UI (list/create, members roster incl. add/remove, settings incl. archive/delete)
 •	✅ Project UI (paginated list/create, labels, settings incl. status transitions)
 •	✅ Task UI (paginated + filtered list, full detail page — inline status/priority/assignee/due-date/labels editing, subtasks, delete)
-•	⬜ Dashboard UI — deferred with M8 (Dashboard & Search), which hasn't been built; nothing to consume yet
-•	⬜ Search UI — same, deferred with M8
+•	✅ Dashboard UI — built with M8 (no longer deferred): an org-level tab (personal summary KPI tiles + productivity, incl. a per-week completion chart), a workspace tab (per-project progress meters, completion rate, active members, team activity) and a project tab (totals, progress meter, status/priority breakdown).
+•	✅ Search UI — built with M8 (no longer deferred): an org-level Search tab with a type filter (All/Tasks/Projects/Workspaces/People), deep-linking into projects and workspaces.
+•	✅ Collaboration UI — added with M6: comments (author-or-admin inline edit/delete), attachments (upload, size/uploader, delete) and the read-only activity timeline, all on the task detail page.
+•	✅ Notification UI — added with M7: an unread-badged bell in `AppShell` with a recent dropdown and mark-all-read, plus a full `/notifications` page with read/type filters, a per-item read toggle, delete and pagination. The bell polls every 60s — notifications are written out-of-band by a worker, and Socket.IO is v1.1 scope.
+Dataviz note: dashboard numbers are stat tiles and meters rather than charts (a one-bar bar chart is the wrong form for a single value), the one time series is a single-hue column chart with values on hover, and status/priority breakdowns are single-hue labelled bar lists — so no categorical palette was introduced and identity never rests on colour alone.
 Architecture: nested layouts (`OrganizationLayout` → `WorkspaceLayout` → `ProjectLayout`) each fetch exactly their own resource + role and pass it down via `useOutletContext`, mirroring the backend's own `requireOrganizationRole`/`requireWorkspaceRole`/`requireProjectRole` layering. Every create/action button is role-gated client-side to match the backend's exact role matrix (`lib/permissions.ts`) — not just for UX, it keeps the UI from ever offering an action that would 403.
 Known gap (flagged, not silently dropped): restoring a soft-deleted task isn't reachable from the UI — there's no "list deleted tasks" endpoint to surface a restore action from (`PATCH { isDeleted: false }` exists API-side but nothing points the UI at a deleted task's id). Add a restore UI affordance if/when that endpoint exists.
 Bug found and fixed during manual verification: the pending-invitations panel's "Accept" button called `acceptOrganizationInvitation(invitation._id)`, but the backend's accept endpoint requires the invitation's raw token (recoverable only from the invite email/log — only its hash is ever stored server-side), not its id. There is no accept-by-id endpoint (only decline works that way). Fixed by removing the broken Accept button and pointing users at the emailed link instead (`/invitations/accept?token=...`, which already worked correctly) — caught by driving the real app in a browser, not by `tsc`/`eslint`, which is exactly why that verification step exists for UI milestones.
@@ -182,7 +203,8 @@ M12 — Release
 ________________________________________
 Current Sprint
 Sprint Goal
-M4 → M5 → M9 sequence is complete: TaskFlow is now a usable local app end-to-end (register → org → workspace → project → task, real UI, manually verified in a browser). Not yet decided: M6/M7/M8 (Collaboration/Notifications/Dashboard & Search) vs. M10 (Testing & Quality) next — ask before starting either.
+M6 → M7 → M8 are complete, backend **and** UI, which also closes M9 (its Dashboard/Search UI had been explicitly deferred with M8). Every feature milestone M1–M9 is now done and 99 integration tests pass. Next up is M10 (Testing & Quality) — ask before starting it.
+Sequencing decision (2026-09-28, completed 2026-09-28): built M6 → M7 → M8 with each milestone's UI shipped alongside its own backend, rather than batching all UI into one milestone as M9 did. Each milestone was gated on `pnpm typecheck`/`build`/`lint`/`test` plus a live dev-server check before the next one started.
 Sequencing decision (2026-09-21, completed 2026-09-21): built M4 → M5 → M9, deferring M6 (Collaboration), M7 (Notifications), M8 (Dashboard & Search) until after a usable local app existed end-to-end. That goal is now met.
 Key Decisions Carried From M2–M5 (apply to M9 and onward)
 •	Repository layer is mandatory (server/src/modules/*/*.repository.ts) — controllers/services never touch Mongoose models directly, per Docs/Rules.md §5.
@@ -194,13 +216,22 @@ Key Decisions Carried From M2–M5 (apply to M9 and onward)
 •	Pagination (`validateQuery` + `sendSuccessResponse`'s `meta`, from M4) now has two consumers (Project, Task) with Task's list carrying more filters — this is the settled pattern for any future paginated list.
 •	M5 established a real exception to "deleted = filtered out by the middleware": Task's restore-via-`PATCH` needs the middleware to resolve a soft-deleted resource, so the deleted-is-404 check moved into the service/controller layer instead for that one module. Every other module still filters at the middleware/repository level — don't generalize this unless a future resource actually needs undelete-via-update too.
 •	M9 is frontend work against `client/` (Vite + React 19 + TypeScript, Tailwind v4, React Router, TanStack Query, Axios, RHF + Zod — see M0). It consumes the M1–M5 APIs as they exist today; no backend changes expected unless the UI surfaces a real gap.
+•	External providers are env-gated with a working local fallback, never a hard dependency: `utils/mailer.ts` (SMTP → nodemailer `jsonTransport`) and now `utils/storage.ts` (Cloudinary → local `UPLOAD_DIR`). Call sites never branch on which one is active. Any future provider should follow this shape.
+•	Notifications are the one user-scoped module — no `requireOrganizationRole` anywhere in it, because a notification belongs to a person rather than to an org membership. `requireAuth`'s `userId` is the whole authorization check, and every query filters on it. Don't generalise the org-role pattern onto it.
+•	Background work goes through BullMQ on the existing Redis, with its own `ioredis` connection (`maxRetriesPerRequest: null` — it cannot share `database/redis.ts`'s client). Producers enqueue and never fail the request if the queue is down; the worker runs in-process and is a no-op under `NODE_ENV=test`, where jobs dispatch inline so tests don't race a consumer.
+•	Caching is `utils/cache.ts` (`SETEX` + JSON, no cache library), applied to dashboard reads only, with the 60s TTL as the entire invalidation strategy. Every path fails open — Redis being down must degrade a feature to slow, never to broken. Prefix invalidation uses `scanStream`, never `KEYS`.
+•	Search uses Mongo `$text` indexes (one per collection, weighted), not regex scans — except `User`, which is a global document whose org scope comes from `OrganizationMember` instead. Every search function takes `organizationId` first and filters on it; `requireOrganizationAccessFromQuery` proves membership before a query is built.
+•	When a route has no `:organizationId` param to derive the tenant from, use the shared `requireOrganizationAccessFromQuery` (`organizations/organization.middleware.ts`) with `validateQuery` in front of it, so a missing `organizationId` is a 422 rather than a 400 from inside the access helper. M3's workspace-specific copy of this was folded into it.
 Completed
 •	[x] M1 — Authentication (see above)
 •	[x] M2 — Organizations (see above)
 •	[x] M3 — Workspaces (see above)
 •	[x] M4 — Projects (see above)
 •	[x] M5 — Tasks (see above)
-•	[x] M9 — Frontend Integration, Auth/Org/Workspace/Project/Task UI (see above; Dashboard/Search UI still pending M8)
+•	[x] M6 — Collaboration (see above)
+•	[x] M7 — Notifications (see above)
+•	[x] M8 — Dashboard & Search (see above)
+•	[x] M9 — Frontend Integration, complete: Auth/Org/Workspace/Project/Task UI, plus the Collaboration (M6), Notification (M7) and Dashboard/Search (M8) UI
 Blockers
 •	None
 ________________________________________
@@ -212,6 +243,10 @@ Medium	~~No real email provider configured.~~ Fixed 2026-09-21: `utils/mailer.ts
 Low	~~Refresh-token rate limit (60/user/hour per spec) is currently keyed by IP, not by user.~~ Fixed 2026-09-21: `refreshLimiter` now has a `keyGenerator` that decodes (unverified — real verification still happens in the service layer) the refresh-token cookie for `userId`, falling back to IP only when the cookie's missing or undecodable.	Resolved
 Low	~~`revokeAllSessionsForUser` uses Redis `KEYS`.~~ Fixed 2026-09-21: switched to `redisClient.scanStream`.	Resolved
 Low	~~No decline-invitation or list-pending-invitations endpoints.~~ Fixed 2026-09-21: added `GET /organizations/invitations/pending` and `POST /organizations/invitations/{id}/decline` (both extend beyond `Docs/ApiSpecifications.md`'s original list — spec updated to match). Invite expiry shortened from 7 to 5 days at the same time.	Resolved
+Medium	No Cloudinary account configured, so `utils/storage.ts` writes attachments to local disk under `UPLOAD_DIR` and serves them from `/uploads` via `express.static`. Those URLs are unguessable (uuid filenames) but **not access-controlled** — anyone with the link can fetch the file, with no org-membership check. Set `CLOUDINARY_CLOUD_NAME`/`CLOUDINARY_API_KEY`/`CLOUDINARY_API_SECRET` to switch to Cloudinary (no call-site changes), or put a signed-URL proxy in front, before this is exposed publicly. Marked with a `ponytail:` comment in `utils/storage.ts`.	Open
+Low	The BullMQ worker runs in the API process (`startNotificationWorker()` from `server.ts`), so the hourly due-date sweep competes with request handling and doesn't scale past one node. Fine at current volume; move it to its own container if the sweep grows. Marked with a `ponytail:` comment in `notification.queue.ts`.	Open
+Low	Notification metadata carries `taskId`/`projectId` but not `workspaceId`, and the task detail route needs org + workspace + project + task, so notifications are not deep-linked in the UI — the bell and `/notifications` page show text only. Adding `workspaceId` to the producers would cost an extra project read per notification; do it if deep links are wanted.	Open
+Low	`msgpackr-extract` (an optional native accelerator behind bullmq's msgpackr) is set to `false` in `server/pnpm-workspace.yaml`'s `allowBuilds`, so its build script never runs and msgpackr falls back to pure JS. Flip it to `true` if queue serialisation ever shows up in a profile.	Open
 Low	Deleting an organization doesn't touch its `OrganizationMember` rows (matches `Docs/DatabaseDesign.md`'s cascade rules exactly — membership isn't listed there). They become orphaned but harmless since `requireOrganizationRole` looks up the organization first and 404s on a deleted one.	Open
 Low	~~Org deletion doesn't revoke members' sessions.~~ Fixed 2026-09-21, as a middle ground rather than full org-scoped sessions (which would require an org-selection step at login — out of scope): the access token now carries `sessionId`; `requireOrganizationRole` records which orgs a session has touched in a Redis set (`session:orgs:{userId}:{sessionId}`); on org deletion, a member's session is revoked only if that org was the *only* one it had tracked access to (fail-open — an untracked/missing set is left alone). See `session.repository.ts`'s `recordSessionOrgAccess`/`revokeSessionsForOrganization`.	Resolved
 ________________________________________

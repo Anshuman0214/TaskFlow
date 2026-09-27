@@ -1,3 +1,4 @@
+import { Types } from "mongoose";
 import { WorkspaceMember } from "./workspaceMember.model.js";
 
 export const createWorkspaceMembership = (
@@ -18,3 +19,8 @@ export const listMembersForWorkspace = (workspaceId: string) =>
 
 export const deleteWorkspaceMembership = (memberId: string) =>
   WorkspaceMember.findByIdAndDelete(memberId);
+
+// Ids only (no populate) — the notification fan-out in M7 needs recipients,
+// not display names. Mirrors organizationMember.repository's listMemberUserIds.
+export const listWorkspaceMemberUserIds = (workspaceId: string): Promise<Types.ObjectId[]> =>
+  WorkspaceMember.find({ workspaceId }).distinct("userId");

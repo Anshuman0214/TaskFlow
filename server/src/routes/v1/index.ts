@@ -7,6 +7,10 @@ import workspaceRouter from "../../modules/workspaces/workspace.routes.js";
 import projectRouter from "../../modules/projects/project.routes.js";
 import labelRouter from "../../modules/projects/label.routes.js";
 import taskRouter from "../../modules/tasks/task.routes.js";
+import collaborationRouter from "../../modules/collaboration/collaboration.routes.js";
+import notificationRouter from "../../modules/notifications/notification.routes.js";
+import dashboardRouter from "../../modules/dashboard/dashboard.routes.js";
+import searchRouter from "../../modules/search/search.routes.js";
 
 const router = Router();
 
@@ -28,5 +32,9 @@ router.use("/workspaces", workspaceRouter);
 router.use("/organizations/:organizationId/workspaces/:workspaceId/projects", projectRouter);
 router.use("/projects/:projectId/labels", labelRouter);
 router.use("/projects/:projectId/tasks", taskRouter);
+router.use("/tasks/:taskId", collaborationRouter);
+router.use("/notifications", notificationRouter);
+router.use("/dashboard", dashboardRouter);
+router.use("/search", searchRouter);
 
 export default router;

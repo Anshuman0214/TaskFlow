@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { validateBody } from "../../middleware/validate.middleware.js";
 import { requireAuth } from "../auth/auth.middleware.js";
+import { requireOrganizationAccessFromQuery } from "../organizations/organization.middleware.js";
 import {
   requireOrganizationAccessForWorkspaceCreate,
-  requireOrganizationAccessForWorkspaceList,
   requireWorkspaceRole,
 } from "./workspace.middleware.js";
 import {
@@ -33,7 +33,7 @@ router.post(
   validateBody(createWorkspaceSchema),
   createWorkspaceController,
 );
-router.get("/", requireOrganizationAccessForWorkspaceList(), listWorkspacesController);
+router.get("/", requireOrganizationAccessFromQuery(), listWorkspacesController);
 
 router.get("/:workspaceId", requireWorkspaceRole(), getWorkspaceController);
 router.patch(

@@ -39,6 +39,7 @@ export const WorkspaceLayout = () => {
       <TabNav
         tabs={[
           { to: base, label: "Projects", end: true },
+          { to: `${base}/dashboard`, label: "Dashboard" },
           { to: `${base}/members`, label: "Members" },
           ...(hasRole(parent.role, ADMIN_ROLES) ? [{ to: `${base}/settings`, label: "Settings" }] : []),
         ]}

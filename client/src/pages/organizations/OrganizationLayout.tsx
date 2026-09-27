@@ -35,6 +35,8 @@ export const OrganizationLayout = () => {
       <TabNav
         tabs={[
           { to: `/organizations/${orgId}`, label: "Workspaces", end: true },
+          { to: `/organizations/${orgId}/dashboard`, label: "Dashboard" },
+          { to: `/organizations/${orgId}/search`, label: "Search" },
           { to: `/organizations/${orgId}/members`, label: "Members" },
           ...(hasRole(context.role, ADMIN_ROLES)
             ? [{ to: `/organizations/${orgId}/settings`, label: "Settings" }]

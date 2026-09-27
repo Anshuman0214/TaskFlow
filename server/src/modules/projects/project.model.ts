@@ -23,5 +23,7 @@ const projectSchema = new Schema<IProject>(
 
 projectSchema.index({ organizationId: 1, workspaceId: 1, key: 1 }, { unique: true });
 projectSchema.index({ workspaceId: 1, status: 1 });
+// M8 Search.
+projectSchema.index({ name: "text", description: "text", key: "text" }, { weights: { name: 5, key: 4, description: 1 } });
 
 export const Project = model<IProject>("Project", projectSchema);

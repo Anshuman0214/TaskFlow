@@ -1,6 +1,7 @@
 import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { Button } from "../ui/Button";
+import { NotificationBell } from "./NotificationBell";
 
 export const AppShell = () => {
   const { user, logout } = useAuth();
@@ -13,6 +14,7 @@ export const AppShell = () => {
             TaskFlow
           </Link>
           <div className="flex items-center gap-3">
+            <NotificationBell />
             <span className="text-sm text-gray-500">{user?.name}</span>
             <Button variant="ghost" onClick={() => void logout()}>
               Log out

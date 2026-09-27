@@ -24,6 +24,11 @@ import { ProjectLabelsPage } from "./pages/projects/ProjectLabelsPage";
 import { ProjectSettingsPage } from "./pages/projects/ProjectSettingsPage";
 import { TasksListPage } from "./pages/projects/TasksListPage";
 import { TaskDetailPage } from "./pages/tasks/TaskDetailPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
+import { OrganizationDashboardPage } from "./pages/organizations/OrganizationDashboardPage";
+import { OrganizationSearchPage } from "./pages/organizations/OrganizationSearchPage";
+import { WorkspaceDashboardPage } from "./pages/workspaces/WorkspaceDashboardPage";
+import { ProjectDashboardPage } from "./pages/projects/ProjectDashboardPage";
 
 function App() {
   return (
@@ -45,16 +50,21 @@ function App() {
             <Route element={<AppShell />}>
               <Route path="/" element={<Navigate to="/organizations" replace />} />
               <Route path="/organizations" element={<OrganizationsListPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/organizations/:orgId" element={<OrganizationLayout />}>
                 <Route index element={<WorkspacesListPage />} />
+                <Route path="dashboard" element={<OrganizationDashboardPage />} />
+                <Route path="search" element={<OrganizationSearchPage />} />
                 <Route path="members" element={<OrganizationMembersPage />} />
                 <Route path="settings" element={<OrganizationSettingsPage />} />
                 <Route path="workspaces/:workspaceId" element={<WorkspaceLayout />}>
                   <Route index element={<ProjectsListPage />} />
+                  <Route path="dashboard" element={<WorkspaceDashboardPage />} />
                   <Route path="members" element={<WorkspaceMembersPage />} />
                   <Route path="settings" element={<WorkspaceSettingsPage />} />
                   <Route path="projects/:projectId" element={<ProjectLayout />}>
                     <Route index element={<TasksListPage />} />
+                    <Route path="dashboard" element={<ProjectDashboardPage />} />
                     <Route path="labels" element={<ProjectLabelsPage />} />
                     <Route path="settings" element={<ProjectSettingsPage />} />
                     <Route path="tasks/:taskId" element={<TaskDetailPage />} />

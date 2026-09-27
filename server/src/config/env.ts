@@ -22,6 +22,14 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   MAIL_FROM: z.string().default("TaskFlow <no-reply@taskflow.local>"),
+
+  // Optional: no Cloudinary account is configured yet, so utils/storage.ts
+  // falls back to writing attachments under UPLOAD_DIR on local disk.
+  CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_API_KEY: z.string().optional(),
+  CLOUDINARY_API_SECRET: z.string().optional(),
+  UPLOAD_DIR: z.string().default("uploads"),
+  MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

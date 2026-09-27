@@ -45,3 +45,8 @@ export const sendOrganizationInviteEmail = (
     link,
   );
 };
+
+// M7: the notification worker mails the same title/message it stored in-app.
+export const sendNotificationEmail = (email: string, title: string, message: string): void => {
+  send(title, email, message, "");
+};

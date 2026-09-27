@@ -17,5 +17,7 @@ const workspaceSchema = new Schema<IWorkspace>(
 );
 
 workspaceSchema.index({ organizationId: 1, name: 1 });
+// M8 Search.
+workspaceSchema.index({ name: "text", description: "text" }, { weights: { name: 5, description: 1 } });
 
 export const Workspace = model<IWorkspace>("Workspace", workspaceSchema);

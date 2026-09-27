@@ -1231,8 +1231,8 @@ Returns
 Task details including
 •	labels (populated)
 •	subtasks (direct children)
-•	comments — not returned; TaskComments is M6 (Collaboration) scope, not built yet
-•	attachments — not returned; TaskAttachments is M6 (Collaboration) scope, not built yet
+•	comments — still not returned inline. Built in M6, but as its own paginated endpoint (`GET /tasks/{taskId}/comments`) rather than embedded, since a task can accumulate an unbounded number of them.
+•	attachments — still not returned inline, same reason: `GET /tasks/{taskId}/attachments`.
 404 if the task is soft-deleted (see Restore Task below for the one way back).
 ________________________________________
 4. Update Task
@@ -1435,6 +1435,11 @@ Side Effects
 •	Notify task participants
 •	Invalidate task cache
 ________________________________________
+Business Rules
+•	`mentionedUserIds` (optional, defaults to `[]`) must every id belong to an `OrganizationMember` of the task's organization — otherwise 400. Without this check any member could push a notification at any account.
+•	Rejected with 404 if the task is soft-deleted.
+•	`content`: 1–5000 characters after trimming.
+________________________________________
 Get Comments
 GET /
 Returns paginated comments.
@@ -1442,16 +1447,26 @@ Query Parameters
 ?page=1
 
 &limit=20
+Authorization
+Any organization member, including GUEST — reading is not gated the way writing is.
+Newest first. `createdBy` is populated with the author's name and email. Soft-deleted comments are excluded.
 ________________________________________
 Update Comment
 PATCH /{commentId}
 Authorization
 Comment Owner
 Admin
+OWNER is included as the superset of ADMIN that every other module already treats it as. The route itself only gates on "can write at all" (OWNER/ADMIN/MANAGER/MEMBER); the author-or-admin decision happens in the service, which is the first layer that has the comment in hand.
+Request Body
+{
+  "content": "Authentication API completed and deployed."
+}
+Stamps `editedAt`. Responses expose it so a client can show an "edited" marker.
 ________________________________________
 Delete Comment
 DELETE /{commentId}
 Soft delete only.
+Authorization: the comment's author, or an ADMIN/OWNER. Deleting an already-deleted comment is a 404.
 ________________________________________
 Attachment APIs
 Base Path
@@ -1464,20 +1479,37 @@ multipart/form-data
 Request
 file
 Business Rules
-•	Maximum file size configurable.
-•	Supported MIME types only.
-•	Files stored in Cloudinary.
+•	Maximum file size configurable — `MAX_UPLOAD_BYTES`, default 10MB. Exceeding it is a 422.
+•	Supported MIME types only — a fixed allowlist (png, jpeg, gif, webp, svg, pdf, plain text, csv, zip, doc/docx, xls/xlsx). Anything else is a 422.
+•	Files stored in Cloudinary when `CLOUDINARY_CLOUD_NAME` is configured; otherwise written under `UPLOAD_DIR` and served from `/uploads`. No call-site or response-shape difference. See `Docs/DatabaseDesign.md`'s TaskAttachments storage note.
+•	A request with no `file` part is a 422.
+•	Rejected with 404 if the task is soft-deleted.
+Authorization
+•	Owner
+•	Admin
+•	Manager
+•	Member
 Database Operations
 •	Upload File
 •	Store Metadata
 •	Create Task Activity
+•	Create Audit Log
+The file is uploaded to storage before the metadata row is written, and there are no multi-document transactions on this Atlas tier, so a failed metadata write deletes the just-uploaded asset to compensate — same pattern as `createOrganization`.
 ________________________________________
 List Attachments
 GET /
+Any organization member. Newest first, metadata only, `uploadedBy` populated with name and email. Soft-deleted attachments are excluded.
 ________________________________________
 Delete Attachment
 DELETE /{attachmentId}
 Deletes Cloudinary asset and metadata.
+Authorization: OWNER, ADMIN or MANAGER (stricter than upload, matching Delete Task).
+The metadata row is **soft**-deleted so the audit trail survives, but the stored asset is removed permanently and is not recoverable. Deleting an already-deleted attachment is a 404.
+________________________________________
+Activity Timeline
+GET /api/v1/tasks/{taskId}/activities
+Any organization member. Read-only, paginated (`?page`, `?limit`), newest first, `actorId` populated with name and email.
+Returns the append-only `TaskActivities` trail for one task — task lifecycle events (from M5) plus comment and attachment events (from M6). Nothing mutates activities; there is no POST, PATCH or DELETE on this path.
 ________________________________________
 Label APIs
 Base Path
@@ -1500,6 +1532,9 @@ Notification Module
 Base Path
 /api/v1/notifications
 ________________________________________
+Authorization
+Authenticated user only. This is the one module with **no** organization role check anywhere: a notification belongs to a person, not to an org membership, so `requireAuth`'s userId is the entire authorization story and every query filters on it. Another user's notification is a 404, never a 403.
+________________________________________
 Get Notifications
 GET /
 Returns notifications for the authenticated user.
@@ -1511,6 +1546,8 @@ Supports
 &isRead
 
 &type
+`isRead` is a query string, so it is accepted as `true`/`false` (not a JSON boolean). `type` must be one of the Notification Types in `Docs/DatabaseDesign.md`. Newest first.
+`meta` carries the usual `page`/`limit`/`total`/`totalPages` plus **`unreadCount`**, which is the unfiltered unread total for the user — a filtered list still reports the real badge number.
 ________________________________________
 Mark As Read
 PATCH /{notificationId}
@@ -1518,55 +1555,75 @@ Request
 {
   "isRead": true
 }
+`isRead: false` is accepted too, to mark something unread again; `readAt` is set on read and cleared on unread. Writes a NOTIFICATION_READ audit log when marking read.
 ________________________________________
 Mark All As Read
 PATCH /read-all
 Marks every unread notification for the current user as read.
+Returns `{ updated: <count> }`. Registered **before** `/{notificationId}` in the router, or "read-all" would be matched as an id.
 ________________________________________
 Delete Notification
 DELETE /{notificationId}
-Soft delete only.
+Soft delete only. Deleting an already-deleted notification is a 404.
+________________________________________
+How notifications are produced
+Nothing in this module creates notifications. They are enqueued by the feature services that cause them and written by a BullMQ worker:
+•	TASK_ASSIGNED — task created with, or updated to, an assignee (M5)
+•	TASK_UPDATED / TASK_COMPLETED — task update, mirroring whichever audit action that update produced (M5)
+•	COMMENT_ADDED — comment created; goes to the task's assignee, its reporter and anyone mentioned (M6). Only mentions also send an email.
+•	INVITATION_SENT — member invited, **only** if that email already has an account (a notification needs a userId; the invitation email reaches everyone else) (M2)
+•	INVITATION_ACCEPTED — invitation accepted; goes to whoever sent it (M2)
+•	PROJECT_ARCHIVED — project status set to ARCHIVED; goes to the workspace's members (M4)
+•	DUE_DATE_REMINDER — hourly sweep over tasks due within 24h that are assigned and not DONE/ARCHIVED; deduplicated per task per dueDate so the repeated sweep cannot double-send
+Nobody is ever notified of their own action, and a recipient who qualifies twice receives one notification. A notification that cannot be enqueued is logged and dropped — it never fails the write that triggered it.
 ________________________________________
 Dashboard Module
 Base Path
 /api/v1/dashboard
 Dashboard endpoints are read-only.
+Authorization
+`/summary` and `/productivity` are **personal** — they report on the authenticated user inside one organization, so they require `?organizationId` and any member of it may call them. `/workspaces/{id}` and `/projects/{id}` borrow their resource's existing role check (`requireWorkspaceRole` / `requireProjectRole`), so any organization member may read them.
+A missing `organizationId` is a 422 (query validation runs before the access check); an organization the caller isn't a member of is a 403.
 ________________________________________
 Dashboard Summary
-GET /summary
+GET /summary?organizationId={organizationId}
 Returns
-•	Assigned Tasks
-•	Completed Tasks
-•	Overdue Tasks
-•	Due Today
-•	Pending Tasks
+•	Assigned Tasks — every live task assigned to the caller in this org
+•	Completed Tasks — of those, status DONE
+•	Overdue Tasks — open (TODO/IN_PROGRESS/IN_REVIEW) with a dueDate before today
+•	Due Today — open with a dueDate inside today
+•	Pending Tasks — open, regardless of due date
 ________________________________________
 Workspace Dashboard
 GET /workspaces/{workspaceId}
 Returns
-•	Project Progress
-•	Team Activity
-•	Completion Rate
-•	Active Members
+•	Project Progress — per project: total tasks, completed tasks, progress percentage, status. Computed with one grouped aggregation over the workspace's tasks rather than a count pair per project.
+•	Team Activity — the 20 most recent `TaskActivities` entries across every task in the workspace, `actorId` populated
+•	Completion Rate — completed / total across the whole workspace
+•	Active Members — `WorkspaceMember` count
+Also returns workspace-wide `totalTasks` and `completedTasks`.
 ________________________________________
 Project Dashboard
 GET /projects/{projectId}
 Returns
 •	Total Tasks
 •	Completed Tasks
-•	Burndown Metrics (Future)
+•	Burndown Metrics (Future) — not built, as specified
 •	Progress Percentage
+•	byStatus / byPriority — task counts grouped by each, so a client can render a breakdown without a second call
+•	Overdue Tasks
 ________________________________________
 Productivity Dashboard
-GET /productivity
+GET /productivity?organizationId={organizationId}
 Returns
-•	Personal Productivity
-•	Completed Tasks
-•	Average Completion Time
-•	Weekly Statistics
+•	Personal Productivity — everything below is scoped to the authenticated user in this organization
+•	Completed Tasks — all time, plus `completedThisWeek`
+•	Average Completion Time — `averageCompletionHours`, mean wall-clock hours from task creation to completion; null when nothing has been completed
+•	Weekly Statistics — completions per ISO week for the last 8 weeks, keyed `YYYY-Www` (`%G-W%V`, so weeks don't split oddly across a year boundary)
 ________________________________________
 Business Rules
 Dashboard endpoints use Redis caching when enabled.
+All four are cached for 60 seconds, keyed per resource (and per user for the personal two). **The TTL is the entire invalidation strategy** — nothing invalidates explicitly, so a change can take up to a minute to appear. Caching fails open: if Redis is unavailable the endpoint recomputes and still answers, it does not error.
 ________________________________________
 Search Module
 Base Path
@@ -1575,7 +1632,9 @@ ________________________________________
 Global Search
 GET /
 Query Parameters
-?q=authentication
+?organizationId={organizationId}  (required)
+
+?q=authentication  (required)
 
 &type=task
 
@@ -1587,25 +1646,35 @@ Supported Types
 •	Projects
 •	Workspaces
 •	Users
+With `type`, only that bucket is returned. Without it, all four run in parallel and the response is grouped: `{ tasks, projects, workspaces, users }`, each `{ items, total }`.
 ________________________________________
 Task Search
 GET /tasks
+Requires `?organizationId`. `?q` is optional here — this endpoint is useful as a pure filter.
 Supported Filters
 •	Status
 •	Priority
-•	Assignee
-•	Label
-•	Due Date
+•	Assignee (`assigneeId`)
+•	Label (`labelId`)
+•	Due Date (`dueBefore` / `dueAfter`, either or both)
+•	Project (`projectId`) — not in the original list, added because narrowing a search to one project is the obvious companion to the filters above
+Paginated (`?page`, `?limit`).
 ________________________________________
 Project Search
 GET /projects
+Requires `?organizationId`. `?q` optional.
 Supports
 •	Status
-•	Workspace
-•	Name
+•	Workspace (`workspaceId`)
+•	Name (via `?q`, which also matches the project key and description)
+Paginated.
 ________________________________________
 Business Rules
 Search results are always restricted to the authenticated user's organization.
+•	`organizationId` is required on every search endpoint — there is no cross-org search, so there is no sensible default tenant. Missing it is a 422; an organization the caller isn't a member of is a 403.
+•	Matching uses MongoDB `$text` indexes (see `Docs/DatabaseDesign.md`'s Text Index notes), not regex scans. Results sort by relevance (`textScore`) when `q` is present and newest-first otherwise.
+•	Users are the exception: they are global documents, so their org scope comes from `OrganizationMember` and matching is a bounded case-insensitive regex over that organization's members. Only `name`, `email`, `isActive` and `createdAt` are returned — never password hashes or verification tokens.
+•	Not cached. Unlike the dashboard, the query string is unbounded, so a cache would mostly store single-use entries.
 ________________________________________
 Admin Module
 Base Path

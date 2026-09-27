@@ -31,5 +31,9 @@ taskSchema.index({ reporterId: 1 });
 taskSchema.index({ dueDate: 1 });
 taskSchema.index({ priority: 1 });
 taskSchema.index({ parentTaskId: 1 });
+// M8 Search: Mongo full-text index rather than a regex scan. One text index is
+// allowed per collection, so title and description share it (title weighted
+// higher so a title hit outranks a passing mention in the body).
+taskSchema.index({ title: "text", description: "text" }, { weights: { title: 5, description: 1 } });
 
 export const Task = model<ITask>("Task", taskSchema);

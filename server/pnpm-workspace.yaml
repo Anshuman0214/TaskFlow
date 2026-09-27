@@ -2,3 +2,6 @@ allowBuilds:
   '@scarf/scarf': true
   bcrypt: false
   esbuild: false
+  # Optional native accelerator behind bullmq's msgpackr; msgpackr falls back
+  # to pure JS without it, so its build script stays unrun.
+  msgpackr-extract: false

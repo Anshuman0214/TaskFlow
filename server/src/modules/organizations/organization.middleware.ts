@@ -67,3 +67,31 @@ export const requireOrganizationRole =
       next(error);
     }
   };
+
+// For routes that aren't nested under any org-scoped resource and so have no
+// :organizationId param to derive the tenant from — workspace list (M3),
+// dashboard summary/productivity and search (M8). organizationId arrives as a
+// query parameter and is validated here before any downstream query trusts it.
+export const requireOrganizationAccessFromQuery =
+  (...allowedRoles: OrganizationRole[]) =>
+  async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const organizationId = req.query.organizationId as string | undefined;
+      const role = await resolveOrganizationAccess(
+        organizationId,
+        (req as AuthedRequest).userId,
+        allowedRoles,
+      );
+
+      (req as OrgScopedRequest).organizationRole = role;
+
+      const sessionId = (req as AuthedRequest).sessionId;
+      if (sessionId && organizationId) {
+        await recordSessionOrgAccess((req as AuthedRequest).userId, sessionId, organizationId);
+      }
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };

@@ -856,6 +856,12 @@ Additional Indexes
 •	priority
 •	parentTaskId
 •	createdAt
+Text Index (added in M8 for Search)
+`{ title: "text", description: "text" }` with weights `{ title: 5, description: 1 }`, so a title hit outranks a passing mention in the body. MongoDB allows only **one** text index per collection, which is why title and description share a single compound one rather than getting one each.
+The same pattern applies to the other searchable collections:
+•	Project — `{ name: "text", description: "text", key: "text" }`, weights `{ name: 5, key: 4, description: 1 }`
+•	Workspace — `{ name: "text", description: "text" }`, weights `{ name: 5, description: 1 }`
+•	User — **deliberately none.** Users are global documents, so a text index there would index every tenant's users into one shared index. Search scopes them through `OrganizationMember` first and then matches with a bounded case-insensitive regex over that organization's members.
 ________________________________________
 Business Rules
 •	Every task belongs to one project.
@@ -887,9 +893,16 @@ Standard Base Entity fields.
 Business Fields
 Field	Type	Required
 taskId	ObjectId	Yes
+organizationId	ObjectId	Yes
 content	String	Yes
 mentionedUserIds	ObjectId[]	No
 editedAt	Date	No
+Implemented as the `Comment` model (`modules/collaboration/comment.model.ts`) in M6. `organizationId` is denormalized onto the document, same as Task's and Project's, so a comment is tenant-scoped without a join. Standard soft-delete fields apply (`isDeleted`/`deletedAt`/`deletedBy`) — Delete Comment is soft only.
+Business Rules
+•	Every id in `mentionedUserIds` must belong to an `OrganizationMember` of the comment's organization. An unvalidated mention would let any member push a notification at an arbitrary account.
+•	`editedAt` is stamped on every update and stays null until the first edit.
+•	Editing and deleting are restricted to the comment's author, or an ADMIN/OWNER of the organization.
+•	Indexed on `{ taskId, isDeleted, createdAt: -1 }` — the list endpoint's exact query and sort.
 ________________________________________
 Relationships
 Task
@@ -925,6 +938,9 @@ Business Rules
 •	Only metadata is stored in MongoDB.
 •	File binaries are never stored in MongoDB.
 •	Deleting an attachment also removes it from Cloudinary.
+Implemented as the `Attachment` model (`modules/collaboration/attachment.model.ts`) in M6, with a denormalized `organizationId` and standard soft-delete fields. Deleting soft-deletes the metadata row (so the audit trail survives) but **permanently** removes the stored asset — the binary is not recoverable.
+Storage note: `utils/storage.ts` is env-gated the same way `utils/mailer.ts` is. With `CLOUDINARY_CLOUD_NAME` set, files go to Cloudinary and `cloudinaryPublicId` holds its public id. Unset (the current state — no account is configured), files are written under `UPLOAD_DIR` and `cloudinaryPublicId` holds the local storage key instead, with `fileUrl` pointing at `/uploads/...`. Call sites are identical either way. See Track.md's Technical Debt for the access-control caveat on the local path.
+Upload is constrained by a fixed MIME allowlist and `MAX_UPLOAD_BYTES` (default 10MB), enforced by multer before anything reaches storage.
 ________________________________________
 4. TaskActivities Collection
 Purpose
@@ -948,7 +964,8 @@ action	String	Yes
 previousValue	Mixed	No
 newValue	Mixed	No
 metadata	Mixed	No
-`action` is implemented as a free string, not a real Mongo enum constraint — same choice `AuditLog` already made (`server/src/modules/audit/auditLog.model.ts`), for consistency. Values in use as of M5: TASK_CREATED, TASK_UPDATED, TASK_ASSIGNED, TASK_STATUS_CHANGED, TASK_COMPLETED, TASK_DELETED, TASK_RESTORED.
+`action` is implemented as a free string, not a real Mongo enum constraint — same choice `AuditLog` already made (`server/src/modules/audit/auditLog.model.ts`), for consistency. Values in use as of M6: TASK_CREATED, TASK_UPDATED, TASK_ASSIGNED, TASK_STATUS_CHANGED, TASK_COMPLETED, TASK_DELETED, TASK_RESTORED, COMMENT_CREATED, COMMENT_UPDATED, COMMENT_DELETED, ATTACHMENT_UPLOADED, ATTACHMENT_DELETED.
+M6 gave this collection its first reader: `GET /api/v1/tasks/{taskId}/activities` (the Activity Timeline). It had been written to since M5 with nothing ever reading it. M8's workspace dashboard also reads it, scoped to every task in a workspace rather than to one task.
 ________________________________________
 Business Rules
 •	Activities are append-only.
@@ -1029,6 +1046,13 @@ Notification Types
 •	INVITATION_ACCEPTED
 •	DUE_DATE_REMINDER
 •	PROJECT_ARCHIVED
+Implemented in M7 (`modules/notifications/`). Soft-delete fields (`isDeleted`/`deletedAt`) were added — Delete Notification is soft only. Indexed on `{ userId, isDeleted, createdAt: -1 }` (the list query and sort) and `{ userId, isRead }` (the unread count).
+Business Rules
+•	A notification belongs to a user, not to an organization membership: every read and write filters on `userId` from `requireAuth`, and there is no organization role check anywhere in the module. Another user's notification is a 404, never a 403.
+•	Nobody is notified of their own action, and a recipient who qualifies twice (an assignee who is also the reporter) receives one notification, not two.
+•	`metadata` carries the ids needed to locate the subject — `taskId`/`projectId` for task and comment events, `organizationId` for invitations, `workspaceId` for project events.
+•	Rows are written by a BullMQ worker, not by the request that triggered them. A notification that cannot be enqueued is logged and dropped; it never fails the write that caused it.
+•	DUE_DATE_REMINDER is deduplicated on `metadata.taskId` + `metadata.dueDate`, because the sweep that produces it runs hourly over the same window.
 ________________________________________
 3. Sessions Collection
 Purpose

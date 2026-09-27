@@ -345,6 +345,172 @@ export const openApiDocument = {
         responses: { "201": { description: "Subtask created" } },
       },
     },
+
+    "/tasks/{taskId}/comments": {
+      get: {
+        summary: "List a task's comments",
+        description: "Any organization member. Paginated (?page&limit), newest first.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Comments" } },
+      },
+      post: {
+        summary: "Create a comment",
+        description:
+          "OWNER, ADMIN, MANAGER or MEMBER. mentionedUserIds must all be members of the task's organization. Notifies the task's assignee, reporter and anyone mentioned.",
+        security: [{ bearerAuth: [] }],
+        responses: { "201": { description: "Comment created" } },
+      },
+    },
+    "/tasks/{taskId}/comments/{commentId}": {
+      patch: {
+        summary: "Update a comment",
+        description: "The comment's author, or an ADMIN/OWNER. Stamps editedAt.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Comment updated" } },
+      },
+      delete: {
+        summary: "Delete a comment",
+        description: "The comment's author, or an ADMIN/OWNER. Soft delete.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Comment deleted" } },
+      },
+    },
+    "/tasks/{taskId}/attachments": {
+      get: {
+        summary: "List a task's attachments",
+        description: "Any organization member. Metadata only — binaries live in Cloudinary.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Attachments" } },
+      },
+      post: {
+        summary: "Upload an attachment",
+        description:
+          "OWNER, ADMIN, MANAGER or MEMBER. multipart/form-data with a single `file` field. Allowlisted MIME types only, max MAX_UPLOAD_BYTES (default 10MB). Stored in Cloudinary when CLOUDINARY_* is configured, otherwise under UPLOAD_DIR and served from /uploads.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "201": { description: "Attachment uploaded" },
+          "422": { description: "Missing file, unsupported MIME type, or file too large" },
+        },
+      },
+    },
+    "/tasks/{taskId}/attachments/{attachmentId}": {
+      delete: {
+        summary: "Delete an attachment",
+        description:
+          "OWNER, ADMIN or MANAGER. Soft-deletes the metadata row and permanently removes the stored asset.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Attachment deleted" } },
+      },
+    },
+    "/tasks/{taskId}/activities": {
+      get: {
+        summary: "Task activity timeline",
+        description:
+          "Any organization member. Read-only view of the append-only TaskActivity trail (task, comment and attachment events). Paginated (?page&limit), newest first.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Activities" } },
+      },
+    },
+
+    "/notifications": {
+      get: {
+        summary: "List the caller's notifications",
+        description:
+          "Scoped to the authenticated user — there is no organization role check. Supports ?page, ?limit, ?isRead (true/false) and ?type. meta includes unreadCount.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Notifications" } },
+      },
+    },
+    "/notifications/read-all": {
+      patch: {
+        summary: "Mark all notifications as read",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Number of notifications updated" } },
+      },
+    },
+    "/notifications/{notificationId}": {
+      patch: {
+        summary: "Mark a notification read or unread",
+        description: "Body: { isRead: boolean }. 404 for another user's notification.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Notification updated" } },
+      },
+      delete: {
+        summary: "Delete a notification",
+        description: "Soft delete. 404 for another user's notification.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Notification deleted" } },
+      },
+    },
+
+    "/dashboard/summary": {
+      get: {
+        summary: "Personal task summary",
+        description:
+          "Requires ?organizationId. Returns the caller's assigned, completed, overdue, due-today and pending task counts. Redis-cached for 60s.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Summary" } },
+      },
+    },
+    "/dashboard/productivity": {
+      get: {
+        summary: "Personal productivity",
+        description:
+          "Requires ?organizationId. Completed totals, this week's count, average hours from creation to completion, and 8 weeks of per-week counts. Redis-cached for 60s.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Productivity" } },
+      },
+    },
+    "/dashboard/workspaces/{workspaceId}": {
+      get: {
+        summary: "Workspace dashboard",
+        description:
+          "Any organization member. Per-project progress, completion rate, active member count and recent team activity. Redis-cached for 60s.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Workspace dashboard" } },
+      },
+    },
+    "/dashboard/projects/{projectId}": {
+      get: {
+        summary: "Project dashboard",
+        description:
+          "Any organization member. Task totals, progress percentage, status/priority breakdown and overdue count. Redis-cached for 60s.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Project dashboard" } },
+      },
+    },
+
+    "/search": {
+      get: {
+        summary: "Global search",
+        description:
+          "Requires ?organizationId and ?q. Optional ?type (task|project|workspace|user) narrows to one collection; without it all four are returned. Results are always restricted to the given organization, which the caller must be a member of.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Grouped search results" },
+          "403": { description: "Caller is not a member of that organization" },
+          "422": { description: "Missing organizationId or q" },
+        },
+      },
+    },
+    "/search/tasks": {
+      get: {
+        summary: "Task search",
+        description:
+          "Requires ?organizationId. Optional ?q plus ?status, ?priority, ?assigneeId, ?labelId, ?projectId, ?dueBefore, ?dueAfter. Paginated.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Matching tasks" } },
+      },
+    },
+    "/search/projects": {
+      get: {
+        summary: "Project search",
+        description:
+          "Requires ?organizationId. Optional ?q plus ?status and ?workspaceId. Paginated.",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Matching projects" } },
+      },
+    },
   },
   components: {
     securitySchemes: {

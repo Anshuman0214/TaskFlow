@@ -94,22 +94,3 @@ export const requireOrganizationAccessForWorkspaceCreate =
       next(error);
     }
   };
-
-// For GET /workspaces: any org member may list, organizationId comes from
-// the query string (there's no :workspaceId to derive it from).
-export const requireOrganizationAccessForWorkspaceList =
-  () =>
-  async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const organizationId = req.query.organizationId as string | undefined;
-      await resolveOrganizationAccess(organizationId, (req as AuthedRequest).userId, []);
-
-      if (organizationId) {
-        await recordAccessIfSessioned(req, organizationId);
-      }
-
-      next();
-    } catch (error) {
-      next(error);
-    }
-  };

@@ -4,6 +4,11 @@ import { createAuditLog } from "../audit/auditLog.repository.js";
 import { findProjectById } from "../projects/project.repository.js";
 import { findLabelById } from "../projects/label.repository.js";
 import { findWorkspaceMembership } from "../workspaces/workspaceMember.repository.js";
+import {
+  notifyTaskAssigned,
+  notifyTaskCompleted,
+  notifyTaskUpdated,
+} from "../notifications/notification.events.js";
 import { createTaskActivity } from "./taskActivity.repository.js";
 import {
   createTask as createTaskRecord,
@@ -111,6 +116,8 @@ export const createTask = async (
     action: "TASK_CREATED",
     newValue: { title: task.title },
   });
+
+  await notifyTaskAssigned(userId, task);
 
   return task;
 };
@@ -227,6 +234,16 @@ export const updateTask = async (
         : undefined,
     newValue: updateInput,
   });
+
+  // Mirrors the audit action above: exactly one notification kind per update,
+  // driven off the same statusChanging/assigneeChanging decision.
+  if (action === "TASK_COMPLETED") {
+    await notifyTaskCompleted(userId, updated);
+  } else if (action === "TASK_ASSIGNED") {
+    await notifyTaskAssigned(userId, updated);
+  } else {
+    await notifyTaskUpdated(userId, updated);
+  }
 
   return updated;
 };

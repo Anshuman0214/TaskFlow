@@ -27,6 +27,11 @@ import { TextArea } from "../../components/ui/TextArea";
 import { Spinner } from "../../components/ui/Spinner";
 import { ErrorBanner } from "../../components/ui/ErrorBanner";
 import { ConfirmModal } from "../../components/ui/ConfirmModal";
+import {
+  ActivityTimeline,
+  AttachmentsPanel,
+  CommentsPanel,
+} from "../../components/collaboration/TaskCollaboration";
 
 const TASK_STATUSES: TaskStatus[] = ["TODO", "IN_PROGRESS", "IN_REVIEW", "DONE", "ARCHIVED"];
 const TASK_PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
@@ -298,6 +303,10 @@ export const TaskDetailPage = () => {
           </form>
         )}
       </Card>
+
+      <CommentsPanel taskId={task._id} canWrite={canWrite} canDelete={canDelete} />
+      <AttachmentsPanel taskId={task._id} canWrite={canWrite} canDelete={canDelete} />
+      <ActivityTimeline taskId={task._id} />
 
       {canDelete && (
         <div>

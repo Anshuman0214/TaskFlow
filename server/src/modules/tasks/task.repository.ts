@@ -88,3 +88,13 @@ export const softDeleteTask = (id: string, deletedBy: string) =>
     { isDeleted: true, deletedAt: new Date(), deletedBy, updatedBy: deletedBy },
     { returnDocument: "after" },
   );
+
+// Used by the notification module's hourly due-date sweep (M7). Only live,
+// unfinished, assigned tasks can produce a reminder.
+export const findTasksDueWithin = (from: Date, until: Date) =>
+  Task.find({
+    isDeleted: false,
+    status: { $nin: ["DONE", "ARCHIVED"] },
+    assigneeId: { $ne: null },
+    dueDate: { $gte: from, $lte: until },
+  });

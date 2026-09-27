@@ -4,6 +4,10 @@ import { sendOrganizationInviteEmail } from "../../utils/mailer.js";
 import { findUserByEmail } from "../users/user.repository.js";
 import { createAuditLog } from "../audit/auditLog.repository.js";
 import {
+  notifyInvitationAccepted,
+  notifyInvitationSent,
+} from "../notifications/notification.events.js";
+import {
   createInvitation,
   findInvitationById,
   findPendingInvitationByTokenHash,
@@ -203,6 +207,14 @@ export const inviteMember = async (
 
   sendOrganizationInviteEmail(input.email, organizationName, rawToken);
 
+  // In-app notification is only possible when the invitee already has an
+  // account; everyone else finds out through the email above.
+  await notifyInvitationSent(
+    organizationId,
+    organizationName,
+    existingUser ? existingUser._id.toString() : null,
+  );
+
   await createAuditLog({
     organizationId,
     actorId,
@@ -238,6 +250,15 @@ export const acceptInvitation = async (
   }
 
   await markInvitationAccepted(invitation._id.toString());
+
+  const organization = await findOrganizationById(organizationId);
+
+  await notifyInvitationAccepted(
+    invitation.invitedBy.toString(),
+    userId,
+    organizationId,
+    organization?.name ?? "the organization",
+  );
 };
 
 export const listPendingInvitations = async (userEmail: string) => {

@@ -42,6 +42,10 @@ app.use(requestTimeMiddleware);
 
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
 
+// Only reached when Cloudinary isn't configured — utils/storage.ts then writes
+// attachments to UPLOAD_DIR and returns /uploads/... URLs pointing here.
+app.use("/uploads", express.static(env.UPLOAD_DIR));
+
 app.use("/", router);
 
 app.use(notFoundMiddleware);

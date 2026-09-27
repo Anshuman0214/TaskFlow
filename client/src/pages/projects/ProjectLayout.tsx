@@ -42,6 +42,7 @@ export const ProjectLayout = () => {
       <TabNav
         tabs={[
           { to: base, label: "Tasks", end: true },
+          { to: `${base}/dashboard`, label: "Dashboard" },
           { to: `${base}/labels`, label: "Labels" },
           ...(hasRole(parent.role, MANAGE_ROLES) ? [{ to: `${base}/settings`, label: "Settings" }] : []),
         ]}
